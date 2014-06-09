@@ -40,7 +40,7 @@ class OplogThread(threading.Thread):
                  doc_manager, oplog_progress_dict, namespace_set, auth_key,
                  auth_username, repl_set=None, collection_dump=True,
                  batch_size=DEFAULT_BATCH_SIZE, fields=None,
-                 dest_mapping={}):
+                 dest_mapping={}, continue_on_error=False):
         """Initialize the oplog thread.
         """
         super(OplogThread, self).__init__()
@@ -87,6 +87,9 @@ class OplogThread(threading.Thread):
 
         #The dict of source namespaces to destination namespaces
         self.dest_mapping = dest_mapping
+
+        #Whether the collection dump gracefully handles exceptions
+        self.continue_on_error = continue_on_error
 
         #If authentication is used, this is an admin password.
         self.auth_key = auth_key
@@ -446,6 +449,48 @@ class OplogThread(threading.Thread):
                         attempts += 1
                         time.sleep(1)
 
+        def upsert_each(dm):
+            num_inserted = 0
+            num_failed = 0
+            for num, doc in enumerate(docs_to_dump()):
+                if num % 10000 == 0:
+                    logging.debug("Upserted %d docs." % num)
+                try:
+                    dm.upsert(doc)
+                    num_inserted += 1
+                except Exception:
+                    if self.continue_on_error:
+                        logging.error(
+                            "Could not upsert document: %r \n" % doc
+                            + "".join(traceback.format_exception(*sys.exc_info())).strip())
+                        num_failed += 1
+                    else:
+                        raise
+            logging.debug("Upserted %d docs" % num_inserted)
+            if num_failed > 0:
+                logging.error("Failed to upsert %d docs" % num_failed)
+
+        def upsert_all(dm):
+            # Bulk upsert if possible
+            if hasattr(dm, "bulk_upsert"):
+                try:
+                    logging.debug("OplogThread: Using bulk upsert function for "
+                                  "collection dump")
+                    dm.bulk_upsert(docs_to_dump())
+                except Exception as e:
+                    if self.continue_on_error:
+                        logging.debug("OplogThread: Caught Exception: \"%s\" "
+                                      "during bulk upsert, re-upserting "
+                                      "documents serially" % e.message)
+                        upsert_each(dm)
+                    else:
+                        raise
+            else:
+                logging.debug("OplogThread: DocManager %s has not"
+                              "bulk_upsert method.  Upserting documents "
+                              "serially for collection dump." % str(dm))
+                upsert_each(dm)
+
         # Extra threads (if any) that assist with collection dumps
         dumping_threads = []
         # Did the dump succeed for all target systems?
@@ -453,41 +498,24 @@ class OplogThread(threading.Thread):
         # Holds any exceptions we can't recover from
         errors = queue.Queue()
         try:
-            for dm in self.doc_managers:
-                # Bulk upsert if possible
-                if hasattr(dm, "bulk_upsert"):
-                    logging.debug("OplogThread: Using bulk upsert function for"
-                                  "collection dump")
-                    # Slight performance gain breaking dump into separate
-                    # threads, only if > 1 replication target
-                    if len(self.doc_managers) == 1:
-                        dm.bulk_upsert(docs_to_dump())
-                    else:
-                        def do_dump(error_queue):
-                            all_docs = docs_to_dump()
-                            try:
-                                dm.bulk_upsert(all_docs)
-                            except Exception:
-                                # Likely exceptions:
-                                # pymongo.errors.OperationFailure,
-                                # mongo_connector.errors.ConnectionFailed
-                                # mongo_connector.errors.OperationFailed
-                                error_queue.put(sys.exc_info())
-
-                        t = threading.Thread(target=do_dump, args=(errors,))
-                        dumping_threads.append(t)
-                        t.start()
-                else:
-                    logging.debug("OplogThread: DocManager %s has not"
-                                  "bulk_upsert method.  Upserting documents "
-                                  "serially for collection dump." % str(dm))
-                    num = 0
-                    for num, doc in enumerate(docs_to_dump()):
-                        if num % 10000 == 0:
-                            logging.debug("Upserted %d docs." % num)
-                        dm.upsert(doc)
-                    logging.debug("Upserted %d docs" % num)
-
+            # Slight performance gain breaking dump into separate
+            # threads, only if > 1 replication target
+            if len(self.doc_managers) == 1:
+                upsert_all(self.doc_managers[0])
+            else:
+                for dm in self.doc_managers:
+                    def do_dump(error_queue):
+                        try:
+                            upsert_all(dm)
+                        except:
+                            # Likely exceptions:
+                            # pymongo.errors.OperationFailure,
+                            # mongo_connector.errors.ConnectionFailed
+                            # mongo_connector.errors.OperationFailed
+                            error_queue.put(sys.exc_info())
+                    t = threading.Thread(target=do_dump, args=(errors,))
+                    dumping_threads.append(t)
+                    t.start()
             # cleanup
             for t in dumping_threads:
                 t.join()
