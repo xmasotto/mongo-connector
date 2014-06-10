@@ -592,7 +592,7 @@ def main():
     #--continue-on-error to continue to upsert documents during a collection
     #dump, even if the documents cannot be inserted for some reason
     parser.add_option("--continue-on-error", action="store_true",
-                      dest="continue_on_error", default=False, help = 
+                      dest="continue_on_error", default=False, help =
                       "By default, if any document fails to upsert"
                       " during a collection dump, the entire operation fails."
                       " When this flag is enabled, errors will be caught"
@@ -714,7 +714,6 @@ def main():
         dest_mapping=dest_mapping,
         auto_commit_interval=options.commit_interval,
         continue_on_error=options.continue_on_error
-        
     )
     connector.start()
 

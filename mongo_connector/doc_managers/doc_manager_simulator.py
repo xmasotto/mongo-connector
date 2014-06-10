@@ -63,7 +63,8 @@ class DocManager(DocManagerBase):
     def upsert(self, doc):
         """Adds a document to the doc dict.
         """
-
+        if doc.get('_upsert_exception', False):
+            raise Exception("upsert exception")
         self.doc_dict[doc["_id"]] = doc
 
     def remove(self, doc):
