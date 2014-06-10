@@ -148,7 +148,7 @@ class TestOplogManager(unittest.TestCase):
         self.assertEqual(len(self.opman.doc_managers[0]._search()), 1000)
 
     def test_dump_collection_with_error(self):
-        """Test the dump_collection method with invalid documents
+        """Test the dump_collection method with invalid documents.
 
         Cases:
 
@@ -162,13 +162,15 @@ class TestOplogManager(unittest.TestCase):
         docs = [{'i': i} for i in range(100)]
         for i in range(50, 60):
             docs[i]['_upsert_exception'] = True
-
-        for doc in docs:
-            self.primary_conn["test"]["test"].insert(doc)
+        self.primary_conn['test']['test'].insert(docs)
 
         last_ts = self.opman.get_last_oplog_timestamp()
         self.assertEqual(last_ts, self.opman.dump_collection())
-        self.assertEqual(len(self.opman.doc_managers[0]._search()), 90)
+        docs = self.opman.doc_managers[0]._search()
+        for doc in docs:
+            self.assertTrue(doc['i'] in range(0, 50) + range(60, 100))
+        self.assertEqual(len(docs), 90)
+
 
     def test_init_cursor(self):
         """Test the init_cursor method

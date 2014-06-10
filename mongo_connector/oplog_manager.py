@@ -25,7 +25,6 @@ import pymongo
 import sys
 import time
 import threading
-import traceback
 from mongo_connector import errors, util
 from mongo_connector.constants import DEFAULT_BATCH_SIZE
 from mongo_connector.util import retry_until_ok
@@ -460,10 +459,8 @@ class OplogThread(threading.Thread):
                     num_inserted += 1
                 except Exception:
                     if self.continue_on_error:
-                        logging.error(
-                            "Could not upsert document: %r \n" % doc
-                            + "".join(traceback.format_exception(
-                                *sys.exc_info())).strip())
+                        logging.exception(
+                            "Could not upsert document: %r" % doc)
                         num_failed += 1
                     else:
                         raise
@@ -472,25 +469,16 @@ class OplogThread(threading.Thread):
                 logging.error("Failed to upsert %d docs" % num_failed)
 
         def upsert_all(dm):
-            # Bulk upsert if possible
-            if hasattr(dm, "bulk_upsert"):
-                try:
-                    logging.debug("OplogThread: Using bulk upsert function for "
-                                  "collection dump")
-                    dm.bulk_upsert(docs_to_dump())
-                except Exception as e:
-                    if self.continue_on_error:
-                        logging.debug("OplogThread: Caught Exception: \"%s\" "
-                                      "during bulk upsert, re-upserting "
-                                      "documents serially" % e.message)
-                        upsert_each(dm)
-                    else:
-                        raise
-            else:
-                logging.debug("OplogThread: DocManager %s has not"
-                              "bulk_upsert method.  Upserting documents "
-                              "serially for collection dump." % str(dm))
-                upsert_each(dm)
+            try:
+                dm.bulk_upsert(docs_to_dump())
+            except Exception as e:
+                if self.continue_on_error:
+                    logging.exception("OplogThread: caught exception"
+                                      " during bulk upsert, re-upserting"
+                                      " documents serially")
+                    upsert_each(dm)
+                else:
+                    raise
 
         # Extra threads (if any) that assist with collection dumps
         dumping_threads = []
@@ -500,23 +488,29 @@ class OplogThread(threading.Thread):
         errors = queue.Queue()
         try:
             # Slight performance gain breaking dump into separate
-            # threads, only if > 1 replication target
-            if len(self.doc_managers) == 1:
-                upsert_all(self.doc_managers[0])
-            else:
-                for dm in self.doc_managers:
-                    def do_dump(error_queue):
-                        try:
+            # threads if > 1 replication target
+            for dm in self.doc_managers:
+                def do_dump(error_queue):
+                    try:
+                        # Bulk upsert if possible
+                        if hasattr(dm, "bulk_upsert"):
+                            logging.debug("OplogThread: Using bulk upsert function for "
+                                          "collection dump")
                             upsert_all(dm)
-                        except:
-                            # Likely exceptions:
-                            # pymongo.errors.OperationFailure,
-                            # mongo_connector.errors.ConnectionFailed
-                            # mongo_connector.errors.OperationFailed
-                            error_queue.put(sys.exc_info())
-                    t = threading.Thread(target=do_dump, args=(errors,))
-                    dumping_threads.append(t)
-                    t.start()
+                        else:
+                            logging.debug("OplogThread: DocManager %s has no"
+                                          "bulk_upsert method.  Upserting documents "
+                                          "serially for collection dump." % str(dm))
+                            upsert_each(dm)
+                    except:
+                        # Likely exceptions:
+                        # pymongo.errors.OperationFailure,
+                        # mongo_connector.errors.ConnectionFailed
+                        # mongo_connector.errors.OperationFailed
+                        error_queue.put(sys.exc_info())
+                t = threading.Thread(target=do_dump, args=(errors,))
+                dumping_threads.append(t)
+                t.start()
             # cleanup
             for t in dumping_threads:
                 t.join()

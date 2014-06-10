@@ -592,11 +592,15 @@ def main():
     #--continue-on-error to continue to upsert documents during a collection
     #dump, even if the documents cannot be inserted for some reason
     parser.add_option("--continue-on-error", action="store_true",
-                      dest="continue_on_error", default=False, help =
+                      dest="continue_on_error", default=False, help=
                       "By default, if any document fails to upsert"
                       " during a collection dump, the entire operation fails."
-                      " When this flag is enabled, errors will be caught"
-                      " and logged, allowing the collection dump to continue.")
+                      " When this flag is enabled, normally fatal errors"
+                      " will be caught and logged, allowing the collection"
+                      " dump to continue.\n"
+                      " Note: Applying oplog operations to an incomplete"
+                      " set of documents due to errors may cause undefined"
+                      " behavior. Use this flag to dump only.")
 
     #-v enables vebose logging
     parser.add_option("-v", "--verbose", action="store_true",
