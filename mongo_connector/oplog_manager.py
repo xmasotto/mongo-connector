@@ -462,7 +462,8 @@ class OplogThread(threading.Thread):
                     if self.continue_on_error:
                         logging.error(
                             "Could not upsert document: %r \n" % doc
-                            + "".join(traceback.format_exception(*sys.exc_info())).strip())
+                            + "".join(traceback.format_exception(
+                                *sys.exc_info())).strip())
                         num_failed += 1
                     else:
                         raise
