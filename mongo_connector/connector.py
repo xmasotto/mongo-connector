@@ -42,7 +42,8 @@ class Connector(threading.Thread):
                  auth_username=None, collection_dump=True,
                  batch_size=constants.DEFAULT_BATCH_SIZE,
                  fields=None, dest_mapping={},
-                 auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL):
+                 auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL,
+                 continue_on_error=False):
 
         if target_url and not doc_manager:
             raise errors.ConnectorError("Cannot create a Connector with a "
@@ -103,6 +104,9 @@ class Connector(threading.Thread):
 
         #The dict of source namespace to destination namespace
         self.dest_mapping = dest_mapping
+
+        #Whether the collection dump gracefully handles exceptions
+        self.continue_on_error = continue_on_error
 
         #The key that is a unique document identifier for the target system.
         #Not necessarily the mongo unique key.
@@ -312,7 +316,8 @@ class Connector(threading.Thread):
                 collection_dump=self.collection_dump,
                 batch_size=self.batch_size,
                 fields=self.fields,
-                dest_mapping=self.dest_mapping
+                dest_mapping=self.dest_mapping,
+                continue_on_error=self.continue_on_error
             )
             self.shard_set[0] = oplog
             logging.info('MongoConnector: Starting connection thread %s' %
@@ -378,7 +383,8 @@ class Connector(threading.Thread):
                         collection_dump=self.collection_dump,
                         batch_size=self.batch_size,
                         fields=self.fields,
-                        dest_mapping=self.dest_mapping
+                        dest_mapping=self.dest_mapping,
+                        continue_on_error=self.continue_on_error
                     )
                     self.shard_set[shard_id] = oplog
                     msg = "Starting connection thread"
@@ -589,6 +595,19 @@ def main():
                       """ interval, which should be preferred to this"""
                       """ option.""")
 
+    #--continue-on-error to continue to upsert documents during a collection
+    #dump, even if the documents cannot be inserted for some reason
+    parser.add_option("--continue-on-error", action="store_true",
+                      dest="continue_on_error", default=False, help=
+                      "By default, if any document fails to upsert"
+                      " during a collection dump, the entire operation fails."
+                      " When this flag is enabled, normally fatal errors"
+                      " will be caught and logged, allowing the collection"
+                      " dump to continue.\n"
+                      "Note: Applying oplog operations to an incomplete"
+                      " set of documents due to errors may cause undefined"
+                      " behavior. Use this flag to dump only.")
+
     #-v enables vebose logging
     parser.add_option("-v", "--verbose", action="store_true",
                       dest="verbose", default=False,
@@ -707,7 +726,8 @@ def main():
         batch_size=options.batch_size,
         fields=fields,
         dest_mapping=dest_mapping,
-        auto_commit_interval=options.commit_interval
+        auto_commit_interval=options.commit_interval,
+        continue_on_error=options.continue_on_error
     )
     connector.start()
 
