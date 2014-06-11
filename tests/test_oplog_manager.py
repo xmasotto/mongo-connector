@@ -159,7 +159,7 @@ class TestOplogManager(unittest.TestCase):
         self.opman.continue_on_error = True
         self.opman.oplog = self.primary_conn["local"]["oplog.rs"]
 
-        docs = [{'i': i} for i in range(100)]
+        docs = [{'a': i} for i in range(100)]
         for i in range(50, 60):
             docs[i]['_upsert_exception'] = True
         self.primary_conn['test']['test'].insert(docs)
@@ -170,8 +170,9 @@ class TestOplogManager(unittest.TestCase):
         docs.sort()
         
         self.assertEqual(len(docs), 90)
-        for j, i in enumerate(range(0, 50) + range(60, 100)):
-            self.assertTrue(docs[j]['i'] == i)
+        correct_a = list(range(0, 50) + range(60, 100))
+        for i in range(len(docs)):
+            self.assertEquals(docs[i]['a'], correct_a[i])
 
     def test_init_cursor(self):
         """Test the init_cursor method
