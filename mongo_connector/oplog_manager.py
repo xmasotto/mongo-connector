@@ -37,8 +37,8 @@ class OplogThread(threading.Thread):
     """OplogThread gathers the updates for a single oplog.
     """
     def __init__(self, primary_conn, main_address, oplog_coll, is_sharded,
-                 doc_manager, oplog_progress_dict, namespace_set, auth_key,
-                 auth_username, repl_set=None, collection_dump=True,
+                 doc_manager, oplog_progress_dict, namespace_set, gridfs_set,
+                 auth_key, auth_username, repl_set=None, collection_dump=True,
                  batch_size=DEFAULT_BATCH_SIZE, fields=None,
                  dest_mapping={}):
         """Initialize the oplog thread.
@@ -84,6 +84,9 @@ class OplogThread(threading.Thread):
 
         #The set of namespaces to process from the mongo cluster.
         self.namespace_set = namespace_set
+
+        #The set of gridfs namespaces to process from the mongo cluster
+        self.gridfs_set = gridfs_set
 
         #The dict of source namespaces to destination namespaces
         self.dest_mapping = dest_mapping
@@ -194,6 +197,23 @@ class OplogThread(threading.Thread):
                             try:
                                 logging.debug("OplogThread: Operation for this "
                                               "entry is %s" % str(operation))
+
+                                # gridfs
+                                if ns.endswith(".files"):
+                                    if ns[:ns.rfind(".")] in self.gridfs_set:
+                                        if operation == 'i':
+                                            doc = entry.get('o')
+                                            doc['_ts'] = util.bson_ts_to_long(
+                                                entry['ts'])
+                                            doc['ns'] = ns
+                                            """
+                                            docman.upsert_file(GridFSFile(
+                                                self.main_connection, doc))
+                                            """
+                                        if operation == 'd':
+                                            #docman.remove_file(entry['o']['_id'])
+                                            pass
+                                    continue
 
                                 # Remove
                                 if operation == 'd':
@@ -379,6 +399,44 @@ class OplogThread(threading.Thread):
                               % self.oplog)
                 return None
 
+    def docs_to_dump(dump_set):
+        for namespace in dump_set:
+            logging.info("OplogThread: dumping collection %s"
+                         % namespace)
+            database, coll = namespace.split('.', 1)
+            last_id = None
+            attempts = 0
+
+            # Loop to handle possible AutoReconnect
+            while attempts < 60:
+                target_coll = self.main_connection[database][coll]
+                if not last_id:
+                    cursor = util.retry_until_ok(
+                        target_coll.find,
+                        fields=self._fields,
+                        sort=[("_id", pymongo.ASCENDING)]
+                    )
+                else:
+                    cursor = util.retry_until_ok(
+                        target_coll.find,
+                        {"_id": {"$gt": last_id}},
+                        fields=self._fields,
+                        sort=[("_id", pymongo.ASCENDING)]
+                    )
+                try:
+                    for doc in cursor:
+                        if not self.running:
+                            raise StopIteration
+                        doc["ns"] = self.dest_mapping.get(
+                            namespace, namespace)
+                        doc["_ts"] = long_ts
+                        last_id = doc["_id"]
+                        yield doc
+                    break
+                except pymongo.errors.AutoReconnect:
+                    attempts += 1
+                    time.sleep(1)
+
     def dump_collection(self):
         """Dumps collection into the target system.
 
@@ -387,6 +445,7 @@ class OplogThread(threading.Thread):
         """
 
         dump_set = self.namespace_set or []
+        gridfs_set = self.gridfs_set or []
         logging.debug("OplogThread: Dumping set of collections %s " % dump_set)
 
         #no namespaces specified
@@ -408,43 +467,6 @@ class OplogThread(threading.Thread):
             return None
         long_ts = util.bson_ts_to_long(timestamp)
 
-        def docs_to_dump():
-            for namespace in dump_set:
-                logging.info("OplogThread: dumping collection %s"
-                             % namespace)
-                database, coll = namespace.split('.', 1)
-                last_id = None
-                attempts = 0
-
-                # Loop to handle possible AutoReconnect
-                while attempts < 60:
-                    target_coll = self.main_connection[database][coll]
-                    if not last_id:
-                        cursor = util.retry_until_ok(
-                            target_coll.find,
-                            fields=self._fields,
-                            sort=[("_id", pymongo.ASCENDING)]
-                        )
-                    else:
-                        cursor = util.retry_until_ok(
-                            target_coll.find,
-                            {"_id": {"$gt": last_id}},
-                            fields=self._fields,
-                            sort=[("_id", pymongo.ASCENDING)]
-                        )
-                    try:
-                        for doc in cursor:
-                            if not self.running:
-                                raise StopIteration
-                            doc["ns"] = self.dest_mapping.get(
-                                namespace, namespace)
-                            doc["_ts"] = long_ts
-                            last_id = doc["_id"]
-                            yield doc
-                        break
-                    except pymongo.errors.AutoReconnect:
-                        attempts += 1
-                        time.sleep(1)
 
         # Extra threads (if any) that assist with collection dumps
         dumping_threads = []
@@ -461,10 +483,10 @@ class OplogThread(threading.Thread):
                     # Slight performance gain breaking dump into separate
                     # threads, only if > 1 replication target
                     if len(self.doc_managers) == 1:
-                        dm.bulk_upsert(docs_to_dump())
+                        dm.bulk_upsert(docs_to_dump(dump_set))
                     else:
                         def do_dump(error_queue):
-                            all_docs = docs_to_dump()
+                            all_docs = docs_to_dump(dump_set)
                             try:
                                 dm.bulk_upsert(all_docs)
                             except Exception:
