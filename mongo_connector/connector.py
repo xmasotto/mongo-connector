@@ -598,7 +598,7 @@ def main():
                       " When this flag is enabled, normally fatal errors"
                       " will be caught and logged, allowing the collection"
                       " dump to continue.\n"
-                      " Note: Applying oplog operations to an incomplete"
+                      "Note: Applying oplog operations to an incomplete"
                       " set of documents due to errors may cause undefined"
                       " behavior. Use this flag to dump only.")
 

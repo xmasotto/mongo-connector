@@ -498,9 +498,10 @@ class OplogThread(threading.Thread):
                                           "collection dump")
                             upsert_all(dm)
                         else:
-                            logging.debug("OplogThread: DocManager %s has no"
-                                          "bulk_upsert method.  Upserting documents "
-                                          "serially for collection dump." % str(dm))
+                            logging.debug(
+                                "OplogThread: DocManager %s has no "
+                                "bulk_upsert method.  Upserting documents "
+                                "serially for collection dump." % str(dm))
                             upsert_each(dm)
                     except:
                         # Likely exceptions:

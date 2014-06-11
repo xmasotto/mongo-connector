@@ -167,10 +167,11 @@ class TestOplogManager(unittest.TestCase):
         last_ts = self.opman.get_last_oplog_timestamp()
         self.assertEqual(last_ts, self.opman.dump_collection())
         docs = self.opman.doc_managers[0]._search()
-        for doc in docs:
-            self.assertTrue(doc['i'] in range(0, 50) + range(60, 100))
+        docs.sort()
+        
         self.assertEqual(len(docs), 90)
-
+        for j, i in enumerate(range(0, 50) + range(60, 100)):
+            self.assertTrue(docs[j]['i'] == i)
 
     def test_init_cursor(self):
         """Test the init_cursor method
