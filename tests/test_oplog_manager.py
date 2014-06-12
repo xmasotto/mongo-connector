@@ -170,9 +170,8 @@ class TestOplogManager(unittest.TestCase):
         docs.sort()
         
         self.assertEqual(len(docs), 90)
-        correct_a = list(range(0, 50) + range(60, 100))
-        for i in range(len(docs)):
-            self.assertEquals(docs[i]['a'], correct_a[i])
+        for doc, correct_a in zip(docs, range(0, 50) + range(60, 100)):
+            self.assertEquals(doc['a'], correct_a)
 
     def test_init_cursor(self):
         """Test the init_cursor method
