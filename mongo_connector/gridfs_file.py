@@ -13,15 +13,18 @@ def get_file(db, fs, filename):
         'md5': f.md5,
         'filename': f.filename,
         'chunkSize': f.chunk_size,
-        'ns': 'test.fs.files'
+        'ns': 'test.fs.files',
+        '_ts': 0,
     })
 
 class GridFSFile:
     def __init__(self, main_connection, doc):
         self.main_connection = main_connection
-        self._id = doc.get("_id")
+        self._id = doc['_id']
+        self._ts = doc['_ts']
         self.length = doc['length']
-        self.uploadDate = doc['uploadDate']
+        self.chunk_size = doc['chunkSize']
+        self.upload_date = doc['uploadDate']
         self.md5 = doc['md5']
         self.filename = doc.get('filename') #optional
 
@@ -30,35 +33,38 @@ class GridFSFile:
         fs, _ = files_coll.rsplit(".", 1)
         self.chunks_coll = fs + ".chunks"
         self.db = db
+        self.ns = db + '.' + fs
 
         self.extra = ""
         self.cursor = self.main_connection[self.db][self.chunks_coll].find(
             {'files_id': self._id},
-            sort=[('n', 1)]
-        )
+            sort=[('n', pymongo.ASCENDING)])
 
     def __len__(self):
         return self.length
+
+    def __repr__(self):
+        return "GridFSFile(_id=%s, filename=%s, length=%d)" % (
+            self._id, self.filename, self.length)
 
     def read(self, n = None):
         if n == None:
             n = self.length
 
-        f = StringIO.StringIO(self.extra)
+        data = [self.extra]
         loaded = len(self.extra)
 
         while loaded < n:
             try:
-                print("Loading Chunk")
-                s = util.retry_until_ok(next, self.cursor)['data']
-                f.write(s)
+                s = next(self.cursor)['data']
+                data.append(s)
                 loaded += len(s)
                 del s
+
             except StopIteration:
                 break
 
-        f.seek(0)
-        result = f.read(n)
-        self.extra = f.read()
-        f.close()
+        data_str = "".join(data)
+        result = data_str[:n]
+        self.extra = data_str[n:]
         return result

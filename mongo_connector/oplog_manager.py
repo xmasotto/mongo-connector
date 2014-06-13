@@ -29,6 +29,7 @@ import traceback
 from mongo_connector import errors, util
 from mongo_connector.constants import DEFAULT_BATCH_SIZE
 from mongo_connector.util import retry_until_ok
+from mongo_connector.gridfs_file import GridFSFile
 
 from pymongo import MongoClient
 
@@ -201,9 +202,19 @@ class OplogThread(threading.Thread):
                                 logging.debug("OplogThread: Operation for this "
                                               "entry is %s" % str(operation))
 
-                                # Gridfs Insert/Remove
-                                if ns.endswith(".files"):
-                                    if ns[:ns.rfind(".")] in self.gridfs_set:
+                                db, coll = ns.split('.', 1)
+
+                                # Ignore system collections
+                                if coll.startswith("system."):
+                                    continue
+
+                                # Ignore GridFS chunks
+                                if coll.endswith('.chunks'):
+                                    continue
+
+                                # Gridfs Insert and Remove
+                                if coll.endswith('.files'):
+                                    if ns[:ns.rfind('.')] in self.gridfs_set:
                                         if operation == 'i':
                                             doc = entry.get('o')
                                             doc['_ts'] = util.bson_ts_to_long(
@@ -212,8 +223,9 @@ class OplogThread(threading.Thread):
                                             docman.upsert_file(
                                                 GridFSFile(self.main_connection, doc))
                                         if operation == 'd':
-                                            docman.remove_file(entry['o']['_id'])
-                                            pass
+                                            docman.remove_file(
+                                                entry['o']['ns'],
+                                                entry['o']['_id'])
                                     continue
 
                                 # Remove
@@ -400,7 +412,7 @@ class OplogThread(threading.Thread):
                               % self.oplog)
                 return None
 
-    def docs_to_dump(dump_set):
+    def docs_to_dump(self, dump_set, long_ts):
         for namespace in dump_set:
             logging.info("OplogThread: dumping collection %s"
                          % namespace)
@@ -446,7 +458,7 @@ class OplogThread(threading.Thread):
         """
 
         dump_set = self.namespace_set or []
-        gridfs_files_set = [x + '.files' for x in gridfs_set]
+        gridfs_files_set = [x + '.files' for x in self.gridfs_set]
 
         logging.debug("OplogThread: Dumping set of collections %s " % dump_set)
 
@@ -460,7 +472,7 @@ class OplogThread(threading.Thread):
                     self.main_connection[database].collection_names)
                 for coll in coll_list:
                     # ignore system collections
-                    if coll.startswith("system"):
+                    if coll.startswith("system."):
                         continue
                     # ignore gridfs collections
                     if coll.endswith(".files") or coll.endswith(".chunks"):
@@ -476,7 +488,7 @@ class OplogThread(threading.Thread):
         def upsert_each(dm):
             num_inserted = 0
             num_failed = 0
-            for num, doc in enumerate(docs_to_dump(dump_set)):
+            for num, doc in enumerate(self.docs_to_dump(dump_set, long_ts)):
                 if num % 10000 == 0:
                     logging.debug("Upserted %d docs." % num)
                 try:
@@ -495,7 +507,7 @@ class OplogThread(threading.Thread):
 
         def upsert_all(dm):
             try:
-                dm.bulk_upsert(docs_to_dump(dump_set))
+                dm.bulk_upsert(self.docs_to_dump(dump_set, long_ts))
             except Exception as e:
                 if self.continue_on_error:
                     logging.exception("OplogThread: caught exception"
@@ -521,7 +533,7 @@ class OplogThread(threading.Thread):
                     upsert_each(dm)
 
                 # Dump Gridfs files
-                for doc in docs_to_dump(gridfs_files_set):
+                for doc in self.docs_to_dump(gridfs_files_set, long_ts):
                     dm.upsert_file(
                         GridFSFile(self.main_connection, doc))
                 

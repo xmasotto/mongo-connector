@@ -32,6 +32,9 @@ from mongo_connector.util import retry_until_ok
 from mongo_connector.doc_managers import DocManagerBase, exception_wrapper
 from mongo_connector.doc_managers.formatters import DocumentFlattener
 
+#TODO compatibility
+import urllib
+import urllib2
 
 # pysolr only has 1 exception: SolrError
 wrap_exceptions = exception_wrapper({
@@ -55,6 +58,7 @@ class DocManager(DocManagerBase):
                  unique_key='_id', chunk_size=DEFAULT_MAX_BULK, **kwargs):
         """Verify Solr URL and establish a connection.
         """
+        self.url = url
         self.solr = Solr(url)
         self.unique_key = unique_key
         # pysolr does things in milliseconds
@@ -283,3 +287,26 @@ class DocManager(DocManagerBase):
         for r in result:
             r['_id'] = r.pop(self.unique_key)
             return r
+
+    def upsert_file(self, f):
+        params = {
+            'literal._id': f._id,
+            'literal.ns': f.ns,
+            'literal._ts': f._ts,
+            'literal.length': f.length,
+            'literal.uploadDate': f.upload_date,
+            'literal.md5': f.md5,
+            'literal.filename': f.filename,
+            'commit': 'true'
+        }
+        request = urllib2.Request("%s/update/extract?%s" %
+                                  (self.url, urllib.urlencode(params)))
+
+        request.add_header("Content-type", "application/octet-stream")
+        request.add_data(f)
+        response = urllib2.urlopen(request, timeout=5)
+        print(response.read())
+
+    def remove_file(self, ns, id):
+        #TODO
+        pass
