@@ -296,16 +296,23 @@ class DocManager(DocManagerBase):
             'literal.length': f.length,
             'literal.uploadDate': f.upload_date,
             'literal.md5': f.md5,
-            'literal.filename': f.filename,
-            'commit': 'true'
         }
+
+        if f.filename:
+            params['literal.filename'] = f.filename
+
+        if f.auto_commit_interval == 0:
+            params['commit'] = 'true'
+
         request = urllib2.Request("%s/update/extract?%s" %
                                   (self.url, urllib.urlencode(params)))
 
         request.add_header("Content-type", "application/octet-stream")
         request.add_data(f)
-        response = urllib2.urlopen(request, timeout=5)
-        print(response.read())
+        response = urllib2.urlopen(request)
+        logging.debug(response.read())
 
     def remove_file(self, ns, id):
-        self.solr.delete(id=str(id), commit=True)
+        self.solr.delete(id=str(id),
+                         commit=(self.auto_commit_interval == 0))
+        

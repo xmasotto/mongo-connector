@@ -220,8 +220,8 @@ class OplogThread(threading.Thread):
                                             doc['_ts'] = util.bson_ts_to_long(
                                                 entry['ts'])
                                             doc['ns'] = ns
-                                            docman.upsert_file(
-                                                GridFSFile(self.main_connection, doc))
+                                            docman.upsert_file(GridFSFile(
+                                                self.main_connection, doc))
                                         if operation == 'd':
                                             docman.remove_file(
                                                 entry['o']['ns'],
@@ -519,9 +519,8 @@ class OplogThread(threading.Thread):
 
         def do_dump(dm, error_queue):
             try:
-                # Dump the documents
+                # Dump the documents, bulk upsert if possible
                 if hasattr(dm, "bulk_upsert"):
-                    # Bulk upsert if possible
                     logging.debug("OplogThread: Using bulk upsert function for "
                                   "collection dump")
                     upsert_all(dm)
@@ -558,7 +557,7 @@ class OplogThread(threading.Thread):
             # Slight performance gain breaking dump into separate
             # threads if > 1 replication target
             for dm in self.doc_managers:
-                t = threading.Thread(target=do_dump, args=(dm, errors,))
+                t = threading.Thread(target=do_dump, args=(dm, errors))
                 dumping_threads.append(t)
                 t.start()
             # cleanup

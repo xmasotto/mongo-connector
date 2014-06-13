@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import sys
-import logging
 
 from mongo_connector.compat import reraise
 from mongo_connector.errors import UpdateDoesNotApply

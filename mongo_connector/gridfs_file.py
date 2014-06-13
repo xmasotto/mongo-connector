@@ -4,9 +4,10 @@ import logging
 import pymongo
 from mongo_connector import errors, util
 
-def get_file(db, fs, filename):
+# Helper for debugging
+def get_file(main_connection, fs, filename):
     f = fs.find({'filename': filename})[0]
-    return GridFSFile(db, {
+    return GridFSFile(main_connection, {
         '_id': f._id,
         'length': f.length,
         'uploadDate': f.upload_date,
@@ -26,7 +27,7 @@ class GridFSFile:
         self.chunk_size = doc['chunkSize']
         self.upload_date = doc['uploadDate']
         self.md5 = doc['md5']
-        self.filename = doc.get('filename') #optional
+        self.filename = doc.get('filename')
 
         # get the db and chunks collection from the namespace
         db, files_coll = doc['ns'].split(".", 1)
@@ -54,9 +55,10 @@ class GridFSFile:
         data = [self.extra]
         loaded = len(self.extra)
 
+        # Load at least n bytes
         while loaded < n:
             try:
-                s = next(self.cursor)['data']
+                s = retry_until_ok(next, self.cursor)['data']
                 data.append(s)
                 loaded += len(s)
                 del s
@@ -64,6 +66,7 @@ class GridFSFile:
             except StopIteration:
                 break
 
+        # Keep the leftover bytes in self.extra
         data_str = "".join(data)
         result = data_str[:n]
         self.extra = data_str[n:]
