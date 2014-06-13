@@ -308,5 +308,4 @@ class DocManager(DocManagerBase):
         print(response.read())
 
     def remove_file(self, ns, id):
-        #TODO
-        pass
+        self.solr.delete(id=str(id), commit=True)
