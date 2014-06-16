@@ -18,7 +18,7 @@ from mongo_connector import constants
 
 DEFAULT_CONFIG = {
     'mainAddress': 'localhost:27217',
-    'oplogFile': 'config.txt',
+    'oplogFile': 'oplog.txt',
     'noDump': False,
     'batchSize': constants.DEFAULT_BATCH_SIZE,
     'uniqueKey': '_id',
@@ -138,3 +138,14 @@ class Config(object):
                 fields = options.fields.split(',')
                 for doc_manager in config['docManagers']:
                     doc_manager['fields'] = fields
+
+    def validate(self):
+        # if no doc_manager is specified, use the simulator
+        if len(self.config['docMangers']) == 0:
+            self.config['docManagers'] = [{
+                'docManager': 'doc_managers/doc_manager_simulator'
+            }]
+
+        # TODO
+        # check for things... throw exceptions if they're out of order
+    
