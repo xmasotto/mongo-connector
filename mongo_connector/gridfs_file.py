@@ -36,14 +36,32 @@ class GridFSFile:
         self.db = db
         self.ns = db + '.' + fs
 
+        self.started_reading = False
+        self.finished_reading = False
+        self.header = ""
+        self.footer = ""
+
         self.extra = ""
         self.cursor = self.main_connection[self.db][self.chunks_coll].find(
             {'files_id': self._id},
             sort=[('n', pymongo.ASCENDING)])
 
+    def set_encoding(self, encoding):
+        self.encoding = encoding
+
+    def set_header(self, header):
+        if self.started_reading:
+            raise Exception("Can't set header after read() has been called.")
+        self.header = header
+
+    def set_footer(self, footer):
+        if self.started_reading:
+            raise Exception("Can't set footer after read() has been called.")
+        self.footer = footer
+
     def __len__(self):
         return self.length
-
+    
     def __repr__(self):
         return "GridFSFile(_id=%s, filename=%s, length=%d)" % (
             self._id, self.filename, self.length)
@@ -52,6 +70,11 @@ class GridFSFile:
         if n == None:
             n = self.length
 
+        # Add header text before the file starts
+        if not self.started_reading:
+            self.extra = self.header
+            self.started_reading = True
+
         data = [self.extra]
         loaded = len(self.extra)
 
@@ -59,11 +82,18 @@ class GridFSFile:
         while loaded < n:
             try:
                 s = retry_until_ok(next, self.cursor)['data']
+                if self.encoding != None:
+                    s = s.encode(self.encoding)
+
                 data.append(s)
                 loaded += len(s)
                 del s
 
             except StopIteration:
+                # Add footer text after the file ends
+                if not finished_reading:
+                    data.append(self.footer)
+                    finished_reading = True
                 break
 
         # Keep the leftover bytes in self.extra

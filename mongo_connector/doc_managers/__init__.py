@@ -145,3 +145,11 @@ class DocManagerBase(object):
     def stop(self):
         """Stop all threads started by this DocManager."""
         raise NotImplementedError
+
+    def upsert_file(self, f):
+        """Upsert a GridFS file"""
+        raise NotImplementedError
+
+    def remove_file(self, ns, id):
+        """Remove a GridFS file with the given id"""
+        raise NotImplementedError

@@ -190,3 +190,12 @@ class DocManager(DocManagerBase):
         except es_exceptions.RequestError:
             # no documents so ES returns 400 because of undefined _ts mapping
             return None
+
+    def upsert_file(self, f):
+        doc_type = self.doc_type
+        doc_id = f._id
+        index = f.ns
+        pass
+
+    def remove_file(self, ns, id):
+        pass
