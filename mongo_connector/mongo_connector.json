@@ -4,25 +4,28 @@
     "noDump": false,
     "batchSize": 1,
     "uniqueKey": "_id",
-    "adminUser": "username",
+    "passwordFile": "passwordFile",
+    "password": "password"
+    "adminUsername": "username",
     "autoCommitInterval": 0,
     "continueOnError": false,
     "verbose": false,
+
     "logFile": "log.txt",
-    
     "syslog": {
 	"enabled": false,
-	"syslogHost": "localhost:514",
-	"syslogFacility": "user"
+	"host": "localhost:514",
+	"facility": "user"
     },
+
+    "namespaceSet": ["dbx.agenda.a", "dby.agendaitems.a"],
+    "destMapping": {"source1": "dest1", "source2":"dest2"}
+    "fields": ["field1", "field2", "field3"],
 
     "docManagers": [
 	{
 	    "docManager": "doc_managers/file_doc_manager",
 	    "targetUrl": "~/mongo-connector/track.txt",
-	    "fields": ["field1", "field2", "field3"],
-	    "includeNamespaces": ["dbx.agenda.a", "dby.agendaitems.a"],
-	    "destMapping": {"source1": "dest1", "source2":"dest2"}
 	},
 	{
 	    "docManager": "doc_managers/solr_doc_manager",
