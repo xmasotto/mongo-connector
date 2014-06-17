@@ -15,10 +15,37 @@
 # Maximum # of documents to process before recording timestamp
 # default = -1 (no maximum)
 DEFAULT_BATCH_SIZE = -1
+
 # Interval in seconds between doc manager flushes (i.e. auto commit)
 # default = None (never auto commit)
 DEFAULT_COMMIT_INTERVAL = None
+
 # Maximum # of documents to send in a single bulk request through a
 # DocManager. This only affects DocManagers that cannot stream their
 # requests.
 DEFAULT_MAX_BULK = 500
+
+DEFAULT_CONFIG = {
+    'mainAddress': 'localhost:27217',
+    'oplogFile': 'config.txt',
+    'noDump': False,
+    'batchSize': DEFAULT_BATCH_SIZE,
+    'uniqueKey': '_id',
+    'passwordFile': None,
+    'password': None,
+    'adminUsername': '__system',
+    'autoCommitInterval': DEFAULT_COMMIT_INTERVAL,
+    'continueOnError': False,
+    'verbose': False,
+
+    'logFile': None,
+    'syslog': {
+        'enabled': False,
+        'host': 'localhost:514',
+        'facility': 'user'
+    },
+
+    'namespaceSet': [],
+    'destMapping': {},
+    'fields': None
+}

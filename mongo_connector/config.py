@@ -14,36 +14,11 @@
 import optparse
 import copy
 import json
-from mongo_connector import constants
-
-DEFAULT_CONFIG = {
-    'mainAddress': 'localhost:27217',
-    'oplogFile': 'config.txt',
-    'noDump': False,
-    'batchSize': constants.DEFAULT_BATCH_SIZE,
-    'uniqueKey': '_id',
-    'passwordFile': None,
-    'password': None,
-    'adminUsername': '__system',
-    'autoCommitInterval': constants.DEFAULT_COMMIT_INTERVAL,
-    'continueOnError': False,
-    'verbose': False,
-
-    'logFile': None,
-    'syslog': {
-        'enabled': False,
-        'syslogHost': 'localhost:514',
-        'syslogFacility': 'user'
-    },
-
-    'namespaceSet': [],
-    'destMapping': {},
-    'fields': None
-}
+from mongo_connector import constants, errors
 
 class Config(object):
     def __init__(self):
-        self.config = copy.deepcopy(DEFAULT_CONFIG)
+        self.config = copy.deepcopy(constants.DEFAULT_CONFIG)
 
     def __getitem__(self, key):
         return self.config[key]
@@ -56,8 +31,13 @@ class Config(object):
             else:
                 left[k] = right[k]
 
-    def add_config_json(self, json):
-        parsed_config = json.loads(json)
+    def add_config_json(self, text):
+        try:
+            parsed_config = json.loads(text)
+        except Exception as e:
+            raise errors.InvalidConfiguration(
+                "Exception occurred while parsing JSON: %s" % e.message)
+
         self.merge_dicts(self.config, parsed_config)
 
     def add_options(self, options):
@@ -69,7 +49,7 @@ class Config(object):
         if options.no_dump:
             self.config['noDump'] = True
         if options.batch_size:
-            self.config['batchSize'] = options.batch_size,
+            self.config['batchSize'] = options.batch_size
         if options.unique_key:
             self.config['uniqueKey'] = options.unique_key
         if options.password_file:
@@ -96,18 +76,20 @@ class Config(object):
         if options.ns_set:
             ns_set = options.ns_set.split(',')
             if len(ns_set) != len(set(ns_set)):
-                raise Exception("Namespace set should not contain"
-                                " any duplicates!")
-            self.config['namespaceSet'] = options.ns_set
+                raise errors.InvalidConfiguration(
+                    "Namespace set should not contain any duplicates!")
+            self.config['namespaceSet'] = ns_set
 
         if options.dest_ns_set:
             dest_ns_set = options.dest_ns_set.split(',')
             if len(dest_ns_set) != len(set(dest_ns_set)):
-                raise Exception("Destination namespace set should not contain"
-                                " any duplicates!")
-            if not options.ns_set or len(dest_ns_set) != len(options.ns_set):
-                raise Exception("Destination namespace set should be the"
-                                " same length as the origin namespace set")
+                raise errors.InvalidConfiguration(
+                    "Destination namespace set should not"
+                    " contain any duplicates!")
+            if not options.ns_set or len(dest_ns_set) != len(ns_set):
+                raise errors.InvalidConfiguration(
+                    "Destination namespace set should be the"
+                    " same length as the origin namespace set")
             mapping = dict(zip(ns_set, dest_ns_set))
             self.config['destMapping'] = mapping
 
@@ -117,9 +99,9 @@ class Config(object):
 
         if 'docManagers' in self.config:
             if options.urls or options.doc_managers:
-                raise Exception("Doc Managers settings in the configuration"
-                                " file cannot be overwritten by command line"
-                                " arguments.")
+                raise errors.InvalidConfiguration(
+                    "Doc Managers settings in the configuration file"
+                    " cannot be overwritten by command line arguments.")
         else:
             # Create doc managers from command line arguments
             self.config['docManagers'] = []
@@ -130,21 +112,40 @@ class Config(object):
                            if options.doc_managers else []
 
             if len(target_urls) > 0 and len(doc_managers) == 0:
-                raise Exception("Cannot create a Connector with a target URL"
-                                " but no doc manager!")
+                raise errors.InvalidConfiguration(
+                    "Cannot create a Connector with a target URL"
+                    " but no doc manager!")
             
             # target_urls may be shorter than doc_managers
             for i, d in enumerate(doc_managers):
                 doc_manager = {'docManager': d}
-                if i < len(urls):
+                if i < len(target_urls):
                     doc_manager['targetUrl'] = target_urls[i]
                 else:
                     doc_manager['targetUrl'] = None
-                config['docManagers'].append(doc_manager)
+                self.config['docManagers'].append(doc_manager)
 
             # If more target URLS were given than doc managers, may
             # need to create additional doc managers
             for target_url in target_urls[len(doc_managers):]:
                 doc_manager = {'docManager': doc_managers[-1]}
                 doc_manager['targetUrl'] = target_url
-                config['docManagers'].append(doc_manager)
+                self.config['docManagers'].append(doc_manager)
+
+    def validate(self):
+        if self.config['syslog']['enabled'] and self.config['logFile']:
+            raise errors.InvalidConfiguration(
+                "You cannot specify syslog and a logfile simultaneously,"
+                " please choose the logging method you would prefer.")
+
+        defaultUsername = constants.DEFAULT_CONFIG['adminUsername']
+        if self.config['adminUsername'] != defaultUsername:
+            if self.config['password'] is None and \
+               self.config['passwordFile'] is None:
+                raise errors.InvalidConfiguration(
+                    "Admin username specified without password!")
+        
+        if self.config['autoCommitInterval'] is not None:
+            if conf['autoCommitInterval'] < 0:
+                raise errors.InvalidConfiguration(
+                    "--auto-commit-interval must be non-negative")

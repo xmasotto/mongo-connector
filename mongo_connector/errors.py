@@ -29,6 +29,10 @@ class OperationFailed(MongoConnectorError):
     """Raised for failed commands on the destination database
     """
 
+class InvalidConfiguration(MongoConnectorError):
+    """Raised when the user specifies an invalid configuration
+    """
+
 
 class EmptyDocsError(MongoConnectorError):
     """Raised on attempts to upsert empty sequences of documents
@@ -43,3 +47,5 @@ class ConnectorError(MongoConnectorError):
 
 class UpdateDoesNotApply(OperationFailed):
     """Raised when an update operation cannot be applied to a document."""
+
+    

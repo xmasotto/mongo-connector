@@ -622,17 +622,13 @@ def main():
         json = open(options.config_file, 'r').read()
         conf.add_config_json(json)
     conf.add_options(options)
+    conf.validate()
 
     logger = logging.getLogger()
     loglevel = logging.INFO
     if conf['verbose']:
         loglevel = logging.DEBUG
     logger.setLevel(loglevel)
-
-    if conf['syslog']['enabled'] and conf['logFile']:
-        print ("You cannot specify syslog and a logfile simultaneously, please"
-               " choose the logging method you would prefer.")
-        sys.exit(1)
 
     if conf['syslog']['enabled']:
         syslog_info = conf['syslog']['host'].split(":")
@@ -678,14 +674,6 @@ def main():
 
     if conf['password'] is not None:
         key = options.password
-
-    if key is None and conf['adminUsername'] != "__system":
-        logger.error("Admin username specified without password!")
-        sys.exit(1)
-
-    if conf['autoCommitInterval'] is not None:
-        if conf['autoCommitInterval'] < 0:
-            raise ValueError("--auto-commit-interval must be non-negative")
 
     connector = Connector(
         address=conf['mainAddress'],
