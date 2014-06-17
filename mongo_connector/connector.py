@@ -634,7 +634,7 @@ def main():
         syslog_info = conf['syslog']['host'].split(":")
         syslog_host = logging.handlers.SysLogHandler(
             address=(syslog_info[0], int(syslog_info[1])),
-            facility=conf['syslot']['facility']
+            facility=conf['syslog']['facility']
         )
         syslog_host.setLevel(loglevel)
         logger.addHandler(syslog_host)
@@ -667,7 +667,7 @@ def main():
     if conf['passwordFile'] is not None:
         try:
             key = open(conf['passwordFile']).read()
-            re.sub(r'\s', '', key)
+            key = re.sub(r'\s', '', key)
         except IOError:
             logger.error('Could not parse password authentication file!')
             sys.exit(1)

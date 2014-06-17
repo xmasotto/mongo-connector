@@ -19,8 +19,6 @@ if sys.version_info[:2] == (2, 6):
 else:
     import unittest
 
-sys.path[0:0] = [""]
-
 from mongo_connector import config, constants, errors
 
 class MockOptions(object):
