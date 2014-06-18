@@ -43,7 +43,7 @@ class TestConfig(unittest.TestCase):
         # Load options from a python dictionary
         options = MockOptions(d)
         self.conf.add_options(options)
-    
+
     def test_default(self):
         # Make sure default configuration is valid
         try:
@@ -113,7 +113,7 @@ class TestConfig(unittest.TestCase):
         test_option('logfile', 'logFile', 'testLogFile')
 
         def test_syslog_option(arg_name, json_key, value):
-            self.assertEquals(self.conf['syslog'][json_key], 
+            self.assertEquals(self.conf['syslog'][json_key],
                               default['syslog'][json_key])
             self.load_args({arg_name : value})
             self.assertEquals(self.conf['syslog'][json_key], value)
@@ -121,11 +121,11 @@ class TestConfig(unittest.TestCase):
         test_syslog_option('enable_syslog', 'enabled', True)
         test_syslog_option('syslog_host', 'host', 'testHost')
         test_syslog_option('syslog_facility', 'facility', 'testFacility')
-        
+
         self.assertEquals(self.conf['fields'], default['fields'])
         self.load_args({'fields': 'a,b,c'})
         self.assertEquals(self.conf['fields'], ['a', 'b', 'c'])
-        
+
     def test_namespace_set(self):
         # test namespace_set and dest_namespace_set
         self.load_args({
@@ -153,7 +153,7 @@ class TestConfig(unittest.TestCase):
             "dest_ns_set": "1,3,3"
         }
         self.assertRaises(errors.InvalidConfiguration, self.load_args, args)
-        
+
         # len(ns_set) < len(dest_ns_set)
         args = {
             "ns_set": "a,b,c",

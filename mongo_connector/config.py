@@ -11,9 +11,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import optparse
 import copy
 import json
+
 from mongo_connector import constants, errors
 
 class Config(object):
@@ -115,7 +115,7 @@ class Config(object):
                 raise errors.InvalidConfiguration(
                     "Cannot create a Connector with a target URL"
                     " but no doc manager!")
-            
+
             # target_urls may be shorter than doc_managers
             for i, d in enumerate(doc_managers):
                 doc_manager = {'docManager': d}
@@ -144,7 +144,7 @@ class Config(object):
                self.config['passwordFile'] is None:
                 raise errors.InvalidConfiguration(
                     "Admin username specified without password!")
-        
+
         if self.config['autoCommitInterval'] is not None:
             if self.config['autoCommitInterval'] < 0:
                 raise errors.InvalidConfiguration(

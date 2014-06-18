@@ -47,5 +47,3 @@ class ConnectorError(MongoConnectorError):
 
 class UpdateDoesNotApply(OperationFailed):
     """Raised when an update operation cannot be applied to a document."""
-
-    

@@ -26,7 +26,7 @@ import sys
 import threading
 import time
 import imp
-from mongo_connector import constants, errors, util, config
+from mongo_connector import config, constants, errors, util
 from mongo_connector.locking_dict import LockingDict
 from mongo_connector.oplog_manager import OplogThread
 from mongo_connector.doc_managers import doc_manager_simulator as simulator
@@ -157,7 +157,7 @@ class Connector(threading.Thread):
                             d.DocManager(**docman_kwargs))
                 # If more target URLs were given than doc managers, may need
                 # to create additional doc managers
-                for url in self.target_urls[i+1:]:
+                for url in self.target_urls[i + 1:]:
                     self.doc_managers.append(
                         doc_manager_modules[-1].DocManager(url,
                                                            **docman_kwargs))
