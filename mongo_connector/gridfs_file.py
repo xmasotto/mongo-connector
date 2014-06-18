@@ -45,6 +45,6 @@ class GridFSFile(object):
         return self.length
 
     @wrap_exceptions
-    def read(self, n):
+    def read(self, n=-1):
         self.ensure_file()
-        return self.f.read()
+        return self.f.read(n)
