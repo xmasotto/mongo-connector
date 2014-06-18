@@ -1,73 +1,50 @@
-import math
-import StringIO
+import gridfs
 import logging
+import math
 import pymongo
-from mongo_connector import errors, util
+import time
 
-# Helper for debugging
-def get_file(main_connection, fs, filename):
-    f = fs.find({'filename': filename})[0]
-    return GridFSFile(main_connection, {
-        '_id': f._id,
-        'length': f.length,
-        'uploadDate': f.upload_date,
-        'md5': f.md5,
-        'filename': f.filename,
-        'chunkSize': f.chunk_size,
-        'ns': 'test.fs.files',
-        '_ts': 0,
-    })
+from mongo_connector import compat, errors, util
+from mongo_connector.doc_managers import exception_wrapper
+
+wrap_exceptions = exception_wrapper({
+    gridfs.errors.CorruptGridFile : errors.OperationFailed,
+    gridfs.errors.NoFile : errors.OperationFailed
+})
 
 class GridFSFile:
+    @wrap_exceptions
     def __init__(self, main_connection, doc):
-        self.main_connection = main_connection
         self._id = doc['_id']
         self._ts = doc['_ts']
-        self.length = doc['length']
-        self.chunk_size = doc['chunkSize']
-        self.upload_date = doc['uploadDate']
-        self.md5 = doc['md5']
-        self.filename = doc.get('filename')
+        
+        db, coll_files = doc['ns'].split(".", 1)
+        coll = coll_files.rsplit(".", 1)[0]
+        self.ns = db + '.' + coll
+        self.fs = gridfs.GridFS(main_connection[db], coll)
 
-        # get the db and chunks collection from the namespace
-        db, files_coll = doc['ns'].split(".", 1)
-        fs, _ = files_coll.rsplit(".", 1)
-        self.chunks_coll = fs + ".chunks"
-        self.db = db
-        self.ns = db + '.' + fs
+        try:
+            self.f = self.fs.find({'_id': self._id}).next()
+            self.filename = self.f.filename
+            self.length = self.f.length
+            self.upload_date = self.f.upload_date
+            self.md5 = self.f.md5
+        except StopIteration:
+            self.f = None
 
-        self.extra = ""
-        self.cursor = self.main_connection[self.db][self.chunks_coll].find(
-            {'files_id': self._id},
-            sort=[('n', pymongo.ASCENDING)])
+        self.ensure_file()
 
+    def ensure_file(self):
+        if self.f is None:
+            raise errors.OperationFailed(
+                "GridFS file with %r does not exist!" % self._id)
+
+    @wrap_exceptions
     def __len__(self):
+        self.ensure_file()
         return self.length
 
-    def __repr__(self):
-        return "GridFSFile(_id=%s, filename=%s, length=%d)" % (
-            self._id, self.filename, self.length)
-
-    def read(self, n = None):
-        if n == None:
-            n = self.length
-
-        data = [self.extra]
-        loaded = len(self.extra)
-
-        # Load at least n bytes
-        while loaded < n:
-            try:
-                s = retry_until_ok(next, self.cursor)['data']
-                data.append(s)
-                loaded += len(s)
-                del s
-
-            except StopIteration:
-                break
-
-        # Keep the leftover bytes in self.extra
-        data_str = "".join(data)
-        result = data_str[:n]
-        self.extra = data_str[n:]
-        return result
+    @wrap_exceptions
+    def read(self, n):
+        self.ensure_file()
+        return self.f.read()

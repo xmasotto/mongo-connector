@@ -223,9 +223,9 @@ class OplogThread(threading.Thread):
                                             docman.upsert_file(GridFSFile(
                                                 self.main_connection, doc))
                                         if operation == 'd':
+                                            print(entry)
                                             docman.remove_file(
-                                                entry['o']['ns'],
-                                                entry['o']['_id'])
+                                                ns, entry['o']['_id'])
                                     continue
 
                                 # Remove

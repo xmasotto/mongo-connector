@@ -20,8 +20,9 @@ is that this file can be used as an example to add on different backends.
 To extend this to other systems, simply implement the exact same class and
 replace the method definitions with API calls for the desired backend.
 """
-import re
 import json
+import logging
+import re
 
 from pysolr import Solr, SolrError
 
@@ -301,7 +302,7 @@ class DocManager(DocManagerBase):
         if f.filename:
             params['literal.filename'] = f.filename
 
-        if f.auto_commit_interval == 0:
+        if self.auto_commit_interval == 0:
             params['commit'] = 'true'
 
         request = urllib2.Request("%s/update/extract?%s" %
