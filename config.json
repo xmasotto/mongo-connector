@@ -5,7 +5,7 @@
     "batchSize": 1,
     "uniqueKey": "_id",
     "passwordFile": "passwordFile",
-    "password": "password"
+    "password": "password",
     "adminUsername": "username",
     "autoCommitInterval": 0,
     "continueOnError": false,
@@ -18,14 +18,14 @@
 	"facility": "user"
     },
 
-    "namespaceSet": ["dbx.agenda.a", "dby.agendaitems.a"],
-    "destMapping": {"source1": "dest1", "source2":"dest2"}
+    "namespaceSet": ["dbx9.agenda.a", "dby.agendaitems.a"],
+    "destMapping": {"source1": "dest1", "source2":"dest2"},
     "fields": ["field1", "field2", "field3"],
 
     "docManagers": [
 	{
 	    "docManager": "doc_managers/file_doc_manager",
-	    "targetUrl": "~/mongo-connector/track.txt",
+	    "targetUrl": "~/mongo-connector/track.txt"
 	},
 	{
 	    "docManager": "doc_managers/solr_doc_manager",

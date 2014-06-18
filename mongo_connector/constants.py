@@ -27,7 +27,7 @@ DEFAULT_MAX_BULK = 500
 
 DEFAULT_CONFIG = {
     'mainAddress': 'localhost:27217',
-    'oplogFile': 'config.txt',
+    'oplogFile': 'oplog.timestamp',
     'noDump': False,
     'batchSize': DEFAULT_BATCH_SIZE,
     'uniqueKey': '_id',
@@ -37,6 +37,7 @@ DEFAULT_CONFIG = {
     'autoCommitInterval': DEFAULT_COMMIT_INTERVAL,
     'continueOnError': False,
     'verbose': False,
+#    'logLevel': 0,
 
     'logFile': None,
     'syslog': {

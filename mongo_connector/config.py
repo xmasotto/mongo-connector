@@ -98,7 +98,7 @@ class Config(object):
             self.config['fields'] = fields
 
         if 'docManagers' in self.config:
-            if options.urls or options.doc_managers:
+            if options.target_urls or options.doc_managers:
                 raise errors.InvalidConfiguration(
                     "Doc Managers settings in the configuration file"
                     " cannot be overwritten by command line arguments.")
@@ -146,6 +146,6 @@ class Config(object):
                     "Admin username specified without password!")
         
         if self.config['autoCommitInterval'] is not None:
-            if conf['autoCommitInterval'] < 0:
+            if self.config['autoCommitInterval'] < 0:
                 raise errors.InvalidConfiguration(
                     "--auto-commit-interval must be non-negative")

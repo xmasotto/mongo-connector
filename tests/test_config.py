@@ -247,12 +247,16 @@ class TestConfig(unittest.TestCase):
         self.load_json(test_config)
         self.assertRaises(errors.InvalidConfiguration, self.conf.validate)
 
+        self.conf = config.Config() # reset configuration
+
         # can't specify a username without a password
         test_config = {
             'adminUsername': 'testUsername'
         }
         self.load_json(test_config)
         self.assertRaises(errors.InvalidConfiguration, self.conf.validate)
+
+        self.conf = config.Config() # reset configuration
 
         # auto commit interval can't be negative
         test_config = {
