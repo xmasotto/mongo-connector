@@ -23,23 +23,23 @@ replace the method definitions with API calls for the desired backend.
 import json
 import logging
 import re
+import urllib
 
 from pysolr import Solr, SolrError
 
 from mongo_connector import errors
 from mongo_connector.constants import (DEFAULT_COMMIT_INTERVAL,
                                        DEFAULT_MAX_BULK)
+from mongo_connector.compat import Request, urlopen, URLError, HTTPError
 from mongo_connector.util import retry_until_ok
 from mongo_connector.doc_managers import DocManagerBase, exception_wrapper
 from mongo_connector.doc_managers.formatters import DocumentFlattener
 
-#TODO compatibility
-import urllib
-import urllib2
-
-# pysolr only has 1 exception: SolrError
 wrap_exceptions = exception_wrapper({
-    SolrError: errors.OperationFailed})
+    SolrError: errors.OperationFailed,
+    URLError: errors.OperationFailed,
+    HTTPError: errors.OperationFailed
+})
 
 ADMIN_URL = 'admin/luke?show=schema&wt=json'
 
@@ -291,7 +291,7 @@ class DocManager(DocManagerBase):
 
     def upsert_file(self, f):
         params = {
-            'literal._id': f._id,
+            'literal.%s' % self.unique_key: f._id,
             'literal.ns': f.ns,
             'literal._ts': f._ts,
             'literal.length': f.length,
@@ -305,12 +305,12 @@ class DocManager(DocManagerBase):
         if self.auto_commit_interval == 0:
             params['commit'] = 'true'
 
-        request = urllib2.Request("%s/update/extract?%s" %
+        request = Request("%s/update/extract?%s" %
                                   (self.url, urllib.urlencode(params)))
 
         request.add_header("Content-type", "application/octet-stream")
         request.add_data(f)
-        response = urllib2.urlopen(request)
+        response = urlopen(request)
         logging.debug(response.read())
 
     def remove_file(self, ns, id):

@@ -38,12 +38,12 @@ class Connector(threading.Thread):
     """Checks the cluster for shards to tail.
     """
     def __init__(self, address, oplog_checkpoint, target_url, ns_set,
-                 gridfs_set, u_key, auth_key, doc_manager=None,
+                 u_key, auth_key, doc_manager=None,
                  auth_username=None, collection_dump=True,
                  batch_size=constants.DEFAULT_BATCH_SIZE,
                  fields=None, dest_mapping={},
                  auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL,
-                 continue_on_error=False):
+                 continue_on_error=False, gridfs_set=None):
 
         if target_url and not doc_manager:
             raise errors.ConnectorError("Cannot create a Connector with a "
@@ -309,7 +309,6 @@ class Connector(threading.Thread):
                 doc_manager=self.doc_managers,
                 oplog_progress_dict=self.oplog_progress,
                 namespace_set=self.ns_set,
-                gridfs_set=self.gridfs_set,
                 auth_key=self.auth_key,
                 auth_username=self.auth_username,
                 repl_set=is_master['setName'],
@@ -317,7 +316,8 @@ class Connector(threading.Thread):
                 batch_size=self.batch_size,
                 fields=self.fields,
                 dest_mapping=self.dest_mapping,
-                continue_on_error=self.continue_on_error
+                continue_on_error=self.continue_on_error,
+                gridfs_set=self.gridfs_set
             )
             self.shard_set[0] = oplog
             logging.info('MongoConnector: Starting connection thread %s' %
@@ -377,14 +377,14 @@ class Connector(threading.Thread):
                         doc_manager=self.doc_managers,
                         oplog_progress_dict=self.oplog_progress,
                         namespace_set=self.ns_set,
-                        gridfs_set=self.gridfs_set,
                         auth_key=self.auth_key,
                         auth_username=self.auth_username,
                         collection_dump=self.collection_dump,
                         batch_size=self.batch_size,
                         fields=self.fields,
                         dest_mapping=self.dest_mapping,
-                        continue_on_error=self.continue_on_error
+                        continue_on_error=self.continue_on_error,
+                        gridfs_set=self.gridfs_set
                     )
                     self.shard_set[shard_id] = oplog
                     msg = "Starting connection thread"
@@ -717,7 +717,6 @@ def main():
         oplog_checkpoint=options.oplog_config,
         target_url=target_urls,
         ns_set=ns_set,
-        gridfs_set=gridfs_set,
         u_key=options.u_key,
         auth_key=key,
         doc_manager=doc_managers,
@@ -727,7 +726,8 @@ def main():
         fields=fields,
         dest_mapping=dest_mapping,
         auto_commit_interval=options.commit_interval,
-        continue_on_error=options.continue_on_error
+        continue_on_error=options.continue_on_error,
+        gridfs_set=gridfs_set
     )
     connector.start()
 

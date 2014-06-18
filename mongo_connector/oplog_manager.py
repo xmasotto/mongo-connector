@@ -28,8 +28,8 @@ import threading
 import traceback
 from mongo_connector import errors, util
 from mongo_connector.constants import DEFAULT_BATCH_SIZE
-from mongo_connector.util import retry_until_ok
 from mongo_connector.gridfs_file import GridFSFile
+from mongo_connector.util import retry_until_ok
 
 from pymongo import MongoClient
 
@@ -38,10 +38,10 @@ class OplogThread(threading.Thread):
     """OplogThread gathers the updates for a single oplog.
     """
     def __init__(self, primary_conn, main_address, oplog_coll, is_sharded,
-                 doc_manager, oplog_progress_dict, namespace_set, gridfs_set,
-                 auth_key, auth_username, repl_set=None, collection_dump=True,
+                 doc_manager, oplog_progress_dict, namespace_set, auth_key,
+                 auth_username, repl_set=None, collection_dump=True,
                  batch_size=DEFAULT_BATCH_SIZE, fields=None,
-                 dest_mapping={}, continue_on_error=False):
+                 dest_mapping={}, continue_on_error=False, gridfs_set=None):
         """Initialize the oplog thread.
         """
         super(OplogThread, self).__init__()
@@ -88,6 +88,7 @@ class OplogThread(threading.Thread):
 
         #The set of gridfs namespaces to process from the mongo cluster
         self.gridfs_set = gridfs_set
+        self.gridfs_files_set = [ns + '.files' for ns in self.gridfs_set]
 
         #The dict of source namespaces to destination namespaces
         self.dest_mapping = dest_mapping
@@ -196,25 +197,24 @@ class OplogThread(threading.Thread):
 
                         # use namespace mapping if one exists
                         ns = self.dest_mapping.get(entry['ns'], ns)
+                        db, coll = ns.split('.', 1) 
+
+                        # Ignore system collections
+                        if coll.startswith("system."):
+                            continue
+
+                        # Ignore GridFS chunks
+                        if coll.endswith('.chunks'):
+                            continue
 
                         for docman in self.doc_managers:
                             try:
                                 logging.debug("OplogThread: Operation for this "
                                               "entry is %s" % str(operation))
 
-                                db, coll = ns.split('.', 1)
-
-                                # Ignore system collections
-                                if coll.startswith("system."):
-                                    continue
-
-                                # Ignore GridFS chunks
-                                if coll.endswith('.chunks'):
-                                    continue
-
                                 # Gridfs Insert and Remove
                                 if coll.endswith('.files'):
-                                    if ns[:ns.rfind('.')] in self.gridfs_set:
+                                    if coll in self.gridfs_files_set:
                                         if operation == 'i':
                                             doc = entry.get('o')
                                             doc['_ts'] = util.bson_ts_to_long(
@@ -222,10 +222,12 @@ class OplogThread(threading.Thread):
                                             doc['ns'] = ns
                                             docman.upsert_file(GridFSFile(
                                                 self.main_connection, doc))
+                                            upsert_inc += 1
                                         if operation == 'd':
                                             print(entry)
                                             docman.remove_file(
                                                 ns, entry['o']['_id'])
+                                            remove_inc += 1
                                     continue
 
                                 # Remove
@@ -412,43 +414,6 @@ class OplogThread(threading.Thread):
                               % self.oplog)
                 return None
 
-    def docs_to_dump(self, dump_set, long_ts):
-        for namespace in dump_set:
-            logging.info("OplogThread: dumping collection %s"
-                         % namespace)
-            database, coll = namespace.split('.', 1)
-            last_id = None
-            attempts = 0
-
-            # Loop to handle possible AutoReconnect
-            while attempts < 60:
-                target_coll = self.main_connection[database][coll]
-                if not last_id:
-                    cursor = util.retry_until_ok(
-                        target_coll.find,
-                        fields=self._fields,
-                        sort=[("_id", pymongo.ASCENDING)]
-                    )
-                else:
-                    cursor = util.retry_until_ok(
-                        target_coll.find,
-                        {"_id": {"$gt": last_id}},
-                        fields=self._fields,
-                        sort=[("_id", pymongo.ASCENDING)]
-                    )
-                try:
-                    for doc in cursor:
-                        if not self.running:
-                            raise StopIteration
-                        doc["ns"] = self.dest_mapping.get(
-                            namespace, namespace)
-                        doc["_ts"] = long_ts
-                        last_id = doc["_id"]
-                        yield doc
-                    break
-                except pymongo.errors.AutoReconnect:
-                    attempts += 1
-                    time.sleep(1)
 
     def dump_collection(self):
         """Dumps collection into the target system.
@@ -458,7 +423,6 @@ class OplogThread(threading.Thread):
         """
 
         dump_set = self.namespace_set or []
-        gridfs_files_set = [x + '.files' for x in self.gridfs_set]
 
         logging.debug("OplogThread: Dumping set of collections %s " % dump_set)
 
@@ -485,10 +449,49 @@ class OplogThread(threading.Thread):
             return None
         long_ts = util.bson_ts_to_long(timestamp)
 
+        def docs_to_dump(self, dump_set):
+            for namespace in dump_set:
+                logging.info("OplogThread: dumping collection %s"
+                             % namespace)
+                database, coll = namespace.split('.', 1)
+                last_id = None
+                attempts = 0
+
+                # Loop to handle possible AutoReconnect
+                while attempts < 60:
+                    target_coll = self.main_connection[database][coll]
+                    if not last_id:
+                        cursor = util.retry_until_ok(
+                            target_coll.find,
+                            fields=self._fields,
+                            sort=[("_id", pymongo.ASCENDING)]
+                        )
+                    else:
+                        cursor = util.retry_until_ok(
+                            target_coll.find,
+                            {"_id": {"$gt": last_id}},
+                            fields=self._fields,
+                            sort=[("_id", pymongo.ASCENDING)]
+                        )
+                    try:
+                        for doc in cursor:
+                            if not self.running:
+                                raise StopIteration
+                            doc["ns"] = self.dest_mapping.get(
+                                namespace, namespace)
+                            doc["_ts"] = long_ts
+                            last_id = doc["_id"]
+                            yield doc
+                        break
+                    except pymongo.errors.AutoReconnect:
+                        attempts += 1
+                        time.sleep(1)
+
+
         def upsert_each(dm):
             num_inserted = 0
             num_failed = 0
-            for num, doc in enumerate(self.docs_to_dump(dump_set, long_ts)):
+            for num, doc in enumerate(self.docs_to_dump(dump_set)):
                 if num % 10000 == 0:
                     logging.debug("Upserted %d docs." % num)
                 try:
@@ -507,7 +510,7 @@ class OplogThread(threading.Thread):
 
         def upsert_all(dm):
             try:
-                dm.bulk_upsert(self.docs_to_dump(dump_set, long_ts))
+                dm.bulk_upsert(self.docs_to_dump(dump_set))
             except Exception as e:
                 if self.continue_on_error:
                     logging.exception("OplogThread: caught exception"
@@ -532,7 +535,7 @@ class OplogThread(threading.Thread):
                     upsert_each(dm)
 
                 # Dump Gridfs files
-                for doc in self.docs_to_dump(gridfs_files_set, long_ts):
+                for doc in self.docs_to_dump(self.gridfs_files_set):
                     dm.upsert_file(
                         GridFSFile(self.main_connection, doc))
                 

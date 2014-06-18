@@ -12,19 +12,19 @@ wrap_exceptions = exception_wrapper({
     gridfs.errors.NoFile : errors.OperationFailed
 })
 
-class GridFSFile:
+class GridFSFile(object):
     @wrap_exceptions
     def __init__(self, main_connection, doc):
         self._id = doc['_id']
         self._ts = doc['_ts']
         
         db, coll_files = doc['ns'].split(".", 1)
-        coll = coll_files.rsplit(".", 1)[0]
+        coll = coll_files[:-len(".files")]
         self.ns = db + '.' + coll
         self.fs = gridfs.GridFS(main_connection[db], coll)
 
         try:
-            self.f = self.fs.find({'_id': self._id}).next()
+            self.f = next(self.fs.find({'_id': self._id}))
             self.filename = self.f.filename
             self.length = self.f.length
             self.upload_date = self.f.upload_date
