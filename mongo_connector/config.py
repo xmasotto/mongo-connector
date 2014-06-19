@@ -17,46 +17,51 @@ import json
 from mongo_connector import constants, errors
 
 class Option(object):
-    def __init__(self, *args, action=None, type=None, default=None, help=None,
-                 apply_function=None):
-        self.args = args
-        self.action = action
-        self.type = type
-        self.default = default
-        self.help = help
-        self.apply_function = apply_function
+    def __init__(self, *names, **kwargs):
+        self.default = kwargs.pop('default', None)
+        self.apply_function = kwargs.pop('apply_function', None)
+        self.dest = kwargs.get('dest', None)
+        self.names = names
+        self.kwargs = kwargs
 
     def add_option(parser):
-        option = parser.add_option(*self.args,
-                          action=self.action,
-                          type=self.type,
-                          dest=self.dest,
-                          help=self.help)
-        self.dest = option.dest
+        parser.add_option(*self.names, **self.kwargs)
     
     def apply(self, config, values):
         if self.apply_function:
             self.apply_function(config, values)
 
 class SimpleOption(Option):
-    def __init__(self, *args, action=None, type=None, default=None, help=None,
-                 config_property=None):
+    def __init__(self, *names, **kwargs):
+        Option.__init__(self, *names, **kwargs)
+        config_key = kwargs.pop('config_key', None)
 
         def simple_apply(config, values):
-            config[config_property] = values[self.dest]
+            if config_key and self.dest:
+                # allow for "nested.field.keys"
+                keys = config_key.split('.')
+                for key in keys[:-1]:
+                    if key not in config:
+                        config[key] = {}
+                    config = config[key]
+                config[keys[-1]] = values[self.dest]
 
-        Option.__init__(self, *args,
-                        action=action, type=type, default=default, help=help,
-                        apply_function=simple_apply)
+        self.apply_function = simple_apply
+
 
 class Config(object):
     def __init__(self, options):
         # initialize the default config
         self.config = {}
-        for option in options:
-            if option.default is not None:
-                option.apply(self.config, option.default)
 
+        defaults = {}
+        for option in options:
+            defaults[option.dest] = option.default
+
+        for option in options:
+            option.apply(self.config, defaults)
+
+    def parse_args(self):
         # parse the command line options
         parser = optparse.OptionParser()
         for option in options:
@@ -67,8 +72,7 @@ class Config(object):
         if parsed_options.config_file:
             try:
                 with open(parsed_options.config_file) as f:
-                    parsed_config = json.loads(f.read())
-                    self.merge_dicts(self.config, parsed_config)
+                    self.load_json(f.read())
             except Exception as e:
                 raise errors.InvalidConfiguration(
                     "Exception occured while parsing config file: %s"
@@ -82,6 +86,10 @@ class Config(object):
 
     def __getitem__(self, key):
         return self.config[key]
+
+    def load_json(self, text):
+        parsed_config = json.loads(text)
+        self.merge_dicts(self.config, parsed_config)
 
     def merge_dicts(self, left, right):
         for k in right:

@@ -396,240 +396,343 @@ class Connector(threading.Thread):
             thread.join()
 
 
+command_line_options = []
+
+def add_option(*args, **kwargs):
+    command_line_options.append(config.Option(*args, **kwargs))
+
+def add_simple_option(*args, **kwargs):
+    command_line_options.append(config.SimpleOption(*args, **kwargs))
+
+#-m is for the main address, which is a host:port pair, ideally of the
+#mongos. For non sharded clusters, it can be the primary.
+add_simple_option("-m", "--main", action="store", type="string",
+                  dest="main_address", config_key="mainAddress",
+                  default="localhost:27217", help=
+                  """Specify the main address, which is a"""
+                  """ host:port pair. For sharded clusters, this"""
+                  """ should be the mongos address. For individual"""
+                  """ replica sets, supply the address of the"""
+                  """ primary. For example, `-m localhost:27217`"""
+                  """ would be a valid argument to `-m`. Don't use"""
+                  """ quotes around the address.""")
+
+#-o is to specify the oplog-config file. This file is used by the system
+#to store the last timestamp read on a specific oplog. This allows for
+#quick recovery from failure.
+add_simple_option("-o", "--oplog-ts", action="store", type="string",
+                  dest="oplog_file", config_key="oplogFile",
+                  default="oplog.timestamp", help=
+                  """Specify the name of the file that stores the """
+                  """oplog progress timestamps. """
+                  """This file is used by the system to store the last """
+                  """timestamp read on a specific oplog. This allows """
+                  """for quick recovery from failure. By default this """
+                  """is `config.txt`, which starts off empty. An empty """
+                  """file causes the system to go through all the mongo """
+                  """oplog and sync all the documents. Whenever the """
+                  """cluster is restarted, it is essential that the """
+                  """oplog-timestamp config file be emptied - otherwise """
+                  """the connector will miss some documents and behave """
+                  """incorrectly.""")
+
+#--no-dump specifies whether we should read an entire collection from
+#scratch if no timestamp is found in the oplog_config.
+add_simple_option("--no-dump", action="store_true", dest="no_dump",
+                  config_key="noDump", default=False, help=
+                  "If specified, this flag will ensure that "
+                  "mongo_connector won't read the entire contents of a "
+                  "namespace iff --oplog-ts points to an empty file.")
+
+#--batch-size specifies num docs to read from oplog before updating the
+#--oplog-ts config file with current oplog position
+add_simple_option("--batch-size", action="store", type="int",
+                  default=constants.DEFAULT_BATCH_SIZE,
+                  dest="batch_size", config_key="batchSize", help=
+                  "Specify an int to update the --oplog-ts "
+                  "config file with latest position of oplog every "
+                  "N documents. By default, the oplog config isn't "
+                  "updated until we've read through the entire oplog. "
+                  "You may want more frequent updates if you are at risk "
+                  "of falling behind the earliest timestamp in the oplog")
+
+#-t is to specify the URL to the target system being used.
+def apply_target_urls(config, values):
+    # all of the work is done in apply_doc_managers, just error check here
+    if values['target_urls'] and values['doc_managers'] is None:
+        raise errors.InvalidConfiguration(
+            "Cannot create a Connector with a target URL"
+            " but no doc manager!")
+                
+add_option("-t", "--target-url", "--target-urls", action="store",
+           apply_function=apply_target_urls,
+           type="string", dest="target_urls", help=
+           """Specify the URL to each target system being """
+           """used. For example, if you were using Solr out of """
+           """the box, you could use '-t """
+           """http://localhost:8080/solr' with the """
+           """SolrDocManager to establish a proper connection. """
+           """URLs should be specified in the same order as """
+           """their respective doc managers in the """
+           """--doc-managers option.  URLs are assigned to doc """
+           """managers respectively. Additional doc managers """
+           """are implied to have no target URL. Additional """
+           """URLs are implied to have the same doc manager """
+           """type as the last doc manager for which a URL was """
+           """specified. """
+           """Don't use quotes around addresses. """)
+
+#-n is to specify the namespaces we want to consider. The default
+#considers all the namespaces
+def apply_ns_set(config, values):
+    if values['ns_set'] is None:
+        config['namespaceSet'] = []
+    else:
+        ns_set = values['ns_set'].split(',')
+        if len(ns_set) != len(set(ns_set)):
+            raise errors.InvalidConfiguration(
+                "Namespace set should not contain any duplicates!")
+        else:
+            config['namespaceSet'] = ns_set
+
+add_option("-n", "--namespace-set", action="store", type="string",
+           apply_function=apply_ns_set, dest="ns_set", help=
+           """Used to specify the namespaces we want to """
+           """consider. For example, if we wished to store all """
+           """documents from the test.test and alpha.foo """
+           """namespaces, we could use `-n test.test,alpha.foo`. """
+           """The default is to consider all the namespaces, """
+           """excluding the system and config databases, and """
+           """also ignoring the "system.indexes" collection in """
+           """any database.""")
+
+#-u is to specify the mongoDB field that will serve as the unique key
+#for the target system,
+add_simple_option("-u", "--unique-key", action="store", type="string",
+                  dest="unique_key", config_key="uniqueKey",
+                  default="_id", help=
+                  """The name of the MongoDB field that will serve """
+                  """as the unique key for the target system. """
+                  """Note that this option does not apply """
+                  """when targeting another MongoDB cluster. """
+                  """Defaults to "_id".""")
+
+#-f is to specify the authentication key file. This file is used by mongos
+#to authenticate connections to the shards, and we'll use it in the oplog
+#threads.
+add_simple_option("-f", "--password-file", action="store", type="string",
+                  dest="password_file", config_key="passwordFile", help=
+                  """Used to store the password for authentication."""
+                  """ Use this option if you wish to specify a"""
+                  """ username and password but don't want to"""
+                  """ type in the password. The contents of this"""
+                  """ file should be the password for the admin user.""")
+
+#-p is to specify the password used for authentication.
+add_simple_option("-p", "--password", action="store", type="string",
+                  dest="password", config_key="password", help=
+                  """Used to specify the password."""
+                  """ This is used by mongos to authenticate"""
+                  """ connections to the shards, and in the"""
+                  """ oplog threads. If authentication is not used, then"""
+                  """ this field can be left empty as the default """)
+
+#-a is to specify the username for authentication.
+add_simple_option("-a", "--admin-username", action="store", type="string",
+                  dest="admin_username", config_key="adminUsername", help=
+                  """Used to specify the username of an admin user to """
+                  """authenticate with. To use authentication, the user """
+                  """must specify both an admin username and a keyFile.""")
+
+#-d is to specify the doc manager file.
+def apply_doc_managers(config, values):
+    if values['doc_managers'] is None:
+        return
+
+    if 'docManagers' in config:
+        raise errors.InvalidConfiguration(
+            "Doc Managers settings in the configuration file"
+            " cannot be overwritten by command line arguments.")
+    else:
+        config['docManagers'] = []
+        doc_managers = values['doc_managers'].split(',')
+
+        target_urls = []
+        if 'target_urls' in values:
+            target_urls = values['target_urls'].split(',')
+
+        # target_urls may be shorter than doc_managers
+        for i, d in enumerate(doc_managers):
+            doc_manager = {'docManager': d}
+            if i < len(target_urls):
+                doc_manager['targetUrl'] = target_urls[i]
+            else:
+                doc_manager['targetUrl'] = None
+            config['docManagers'].append(doc_manager)
+
+        # If more target URLS were given than doc managers, may
+        # need to create additional doc managers
+        for target_url in target_urls[len(doc_managers):]:
+            doc_manager = {'docManager': doc_managers[-1]}
+            doc_manager['targetUrl'] = target_url
+            config['docManagers'].append(doc_manager)
+
+add_option("-d", "--docManager", "--doc-managers", action="store",
+           apply_function=apply_doc_managers,
+           type="string", dest="doc_managers", help=
+           """Used to specify the path to each doc manager """
+           """file that will be used. DocManagers should be """
+           """specified in the same order as their respective """
+           """target addresses in the --target-urls option. """
+           """URLs are assigned to doc managers """
+           """respectively. Additional doc managers are """
+           """implied to have no target URL. Additional URLs """
+           """are implied to have the same doc manager type as """
+           """the last doc manager for which a URL was """
+           """specified. By default, Mongo Connector will use """
+           """'doc_manager_simulator.py'.  It is recommended """
+           """that all doc manager files be kept in the """
+           """doc_managers folder in mongo-connector. For """
+           """more information about making your own doc """
+           """manager, see 'Writing Your Own DocManager' """
+           """section of the wiki""")
+
+#-g is the destination namespace
+def apply_dest_ns_set(config, values):
+    if values['dest_ns_set'] is None:
+        config['destMapping'] = {}
+    else:
+        dest_ns_set = values['dest_ns_set'].split(',')
+        if len(dest_ns_set) != len(set(dest_ns_set)):
+            raise errors.InvalidConfiguration(
+                "Destination namespace set should not"
+                " contain any duplicates!")
+
+        ns_set = None
+        if 'ns_set' in values:
+            ns_set = values['ns_set'].split(',')
+
+        if not ns_set or len(dest_ns_set) != len(ns_set):
+            raise errors.InvalidConfiguration(
+                "Destination namespace set should be the"
+                " same length as the origin namespace set")
+        else:
+            config['destMapping'] = dict(zip(ns_set, dest_ns_set))
+
+add_option("-g", "--dest-namespace-set", action="store",
+           apply_function=apply_dest_ns_set,
+           type="string", dest="dest_ns_set", help=
+           """Specify a destination namespace mapping. Each """
+           """namespace provided in the --namespace-set option """
+           """will be mapped respectively according to this """
+           """comma-separated list. These lists must have """
+           """equal length. The default is to use the identity """
+           """mapping. This is currently only implemented """
+           """for mongo-to-mongo connections.""")
+
+#-s is to enable syslog logging.
+add_simple_option("-s", "--enable-syslog", action="store_true",
+                  dest="enable_syslog", config_key="syslog.enabled",
+                  default=False, help=
+                  """Used to enable logging to syslog."""
+                  """ Use -l to specify syslog host.""")
+
+#--syslog-host is to specify the syslog host.
+add_simple_option("--syslog-host", action="store", type="string",
+                  dest="syslog_host", config_key="syslog.host",
+                  default="localhost:514", help=
+                  """Used to specify the syslog host."""
+                  """ The default is 'localhost:514'""")
+
+#--syslog-facility is to specify the syslog facility.
+add_simple_option("--syslog-facility", action="store", type="string",
+                  dest="syslog_facility", config_key="syslog.facility",
+                  default="user", help=
+                  """Used to specify the syslog facility."""
+                  """ The default is 'user'""")
+
+#-i to specify the list of fields to export
+def apply_fields(config, values):
+    if values['fields'] is None:
+        config['fields'] = None
+    else:
+        config['fields'] = values['fields'].split(',')
+
+add_option("-i", "--fields", action="store", type="string",
+           apply_function=apply_fields, dest="fields", help=
+           """Used to specify the list of fields to export. """
+           """Specify a field or fields to include in the export. """
+           """Use a comma separated list of fields to specify multiple """
+           """fields. The '_id', 'ns' and '_ts' fields are always """
+           """exported.""")
+
+#--auto-commit-interval to specify auto commit time interval
+add_simple_option("--auto-commit-interval", action="store", type="int",
+                  dest="auto_commit_interval", config_key="autoCommitInterval",
+                  default=constants.DEFAULT_COMMIT_INTERVAL, help=
+                  """Seconds in-between calls for the Doc Manager"""
+                  """ to commit changes to the target system. A value of"""
+                  """ 0 means to commit after every write operation."""
+                  """ When left unset, Mongo Connector will not make"""
+                  """ explicit commits. Some systems have"""
+                  """ their own mechanism for adjusting a commit"""
+                  """ interval, which should be preferred to this"""
+                  """ option.""")
+
+#--continue-on-error to continue to upsert documents during a collection
+#dump, even if the documents cannot be inserted for some reason
+add_simple_option("--continue-on-error", action="store_true",
+                  dest="continue_on_error", config_key="continueOnError",
+                  default=False, help=
+                  "By default, if any document fails to upsert"
+                  " during a collection dump, the entire operation fails."
+                  " When this flag is enabled, normally fatal errors"
+                  " will be caught and logged, allowing the collection"
+                  " dump to continue.\n"
+                  "Note: Applying oplog operations to an incomplete"
+                  " set of documents due to errors may cause undefined"
+                  " behavior. Use this flag to dump only.")
+
+#-v enables vebose logging
+add_simple_option("-v", "--verbose", action="store_true",
+                  dest="verbose", config_key="verbose",
+                  default=False, help=
+                  "Sets verbose logging to be on.")
+
+#-w enable logging to a file
+add_simple_option("-w", "--logfile", action="store", 
+                  dest="logfile", config_key="logFile", help=
+                  "Log all output to a file rather than stream to "
+                  "stderr. Omit to stream to stderr.")
+
+# config file stuff!
+add_simple_option("-c", "--config-file", action="store",
+                  dest="config_file", help=
+                  "TODO")
+
+def validate_config(conf):
+    if conf['syslog']['enabled'] and conf['logFile']:
+        raise errors.InvalidConfiguration(
+            "You cannot specify syslog and a logfile simultaneously,"
+            " please choose the logging method you would prefer.")
+
+    if conf['adminUsername'] is not None:
+        if conf['password'] is None and conf['passwordFile'] is None:
+            raise errors.InvalidConfiguration(
+                "Admin username specified without password!")
+
+    if conf['autoCommitInterval'] is not None:
+        if conf['autoCommitInterval'] < 0:
+            raise errors.InvalidConfiguration(
+                "--auto-commit-interval must be non-negative")
+
 def main():
     """ Starts the mongo connector (assuming CLI)
     """
-    parser = optparse.OptionParser()
-    options = []
+    conf = config.Config(command_line_options)
+    conf.parse_args()
 
-    def add_option(*args, **kwargs):
-        options.append(config.Option(*args, **kwargs))
-
-    def add_simple_option(*args, **kwargs):
-        options.append(config.SimpleOption(*args, **kwargs))
-
-    #-m is for the main address, which is a host:port pair, ideally of the
-    #mongos. For non sharded clusters, it can be the primary.
-    parser.add_option("-m", "--main", action="store", type="string",
-                      dest="main_address", help=
-                      """Specify the main address, which is a"""
-                      """ host:port pair. For sharded clusters, this"""
-                      """ should be the mongos address. For individual"""
-                      """ replica sets, supply the address of the"""
-                      """ primary. For example, `-m localhost:27217`"""
-                      """ would be a valid argument to `-m`. Don't use"""
-                      """ quotes around the address.""")
-
-    #-o is to specify the oplog-config file. This file is used by the system
-    #to store the last timestamp read on a specific oplog. This allows for
-    #quick recovery from failure.
-    parser.add_option("-o", "--oplog-ts", action="store", type="string",
-                      dest="oplog_file", help=
-                      """Specify the name of the file that stores the """
-                      """oplog progress timestamps. """
-                      """This file is used by the system to store the last """
-                      """timestamp read on a specific oplog. This allows """
-                      """for quick recovery from failure. By default this """
-                      """is `config.txt`, which starts off empty. An empty """
-                      """file causes the system to go through all the mongo """
-                      """oplog and sync all the documents. Whenever the """
-                      """cluster is restarted, it is essential that the """
-                      """oplog-timestamp config file be emptied - otherwise """
-                      """the connector will miss some documents and behave """
-                      """incorrectly.""")
-
-    #--no-dump specifies whether we should read an entire collection from
-    #scratch if no timestamp is found in the oplog_config.
-    parser.add_option("--no-dump", action="store_true", dest="no_dump", help=
-                      "If specified, this flag will ensure that "
-                      "mongo_connector won't read the entire contents of a "
-                      "namespace iff --oplog-ts points to an empty file.")
-
-    #--batch-size specifies num docs to read from oplog before updating the
-    #--oplog-ts config file with current oplog position
-    parser.add_option("--batch-size", action="store",
-                      dest="batch_size", type="int", help=
-                      "Specify an int to update the --oplog-ts "
-                      "config file with latest position of oplog every "
-                      "N documents. By default, the oplog config isn't "
-                      "updated until we've read through the entire oplog. "
-                      "You may want more frequent updates if you are at risk "
-                      "of falling behind the earliest timestamp in the oplog")
-
-    #-t is to specify the URL to the target system being used.
-    parser.add_option("-t", "--target-url", "--target-urls", action="store",
-                      type="string", dest="target_urls", help=
-                      """Specify the URL to each target system being """
-                      """used. For example, if you were using Solr out of """
-                      """the box, you could use '-t """
-                      """http://localhost:8080/solr' with the """
-                      """SolrDocManager to establish a proper connection. """
-                      """URLs should be specified in the same order as """
-                      """their respective doc managers in the """
-                      """--doc-managers option.  URLs are assigned to doc """
-                      """managers respectively. Additional doc managers """
-                      """are implied to have no target URL. Additional """
-                      """URLs are implied to have the same doc manager """
-                      """type as the last doc manager for which a URL was """
-                      """specified. """
-                      """Don't use quotes around addresses. """)
-
-    #-n is to specify the namespaces we want to consider. The default
-    #considers all the namespaces
-    parser.add_option("-n", "--namespace-set", action="store", type="string",
-                      dest="ns_set", help=
-                      """Used to specify the namespaces we want to """
-                      """consider. For example, if we wished to store all """
-                      """documents from the test.test and alpha.foo """
-                      """namespaces, we could use `-n test.test,alpha.foo`. """
-                      """The default is to consider all the namespaces, """
-                      """excluding the system and config databases, and """
-                      """also ignoring the "system.indexes" collection in """
-                      """any database.""")
-
-    #-u is to specify the mongoDB field that will serve as the unique key
-    #for the target system,
-    parser.add_option("-u", "--unique-key", action="store", type="string",
-                      dest="unique_key", help=
-                      """The name of the MongoDB field that will serve """
-                      """as the unique key for the target system. """
-                      """Note that this option does not apply """
-                      """when targeting another MongoDB cluster. """
-                      """Defaults to "_id".""")
-
-    #-f is to specify the authentication key file. This file is used by mongos
-    #to authenticate connections to the shards, and we'll use it in the oplog
-    #threads.
-    parser.add_option("-f", "--password-file", action="store", type="string",
-                      dest="password_file", help=
-                      """Used to store the password for authentication."""
-                      """ Use this option if you wish to specify a"""
-                      """ username and password but don't want to"""
-                      """ type in the password. The contents of this"""
-                      """ file should be the password for the admin user.""")
-
-    #-p is to specify the password used for authentication.
-    parser.add_option("-p", "--password", action="store", type="string",
-                      dest="password", help=
-                      """Used to specify the password."""
-                      """ This is used by mongos to authenticate"""
-                      """ connections to the shards, and in the"""
-                      """ oplog threads. If authentication is not used, then"""
-                      """ this field can be left empty as the default """)
-
-    #-a is to specify the username for authentication.
-    parser.add_option("-a", "--admin-username", action="store", type="string",
-                      dest="admin_username", help=
-                      """Used to specify the username of an admin user to """
-                      """authenticate with. To use authentication, the user """
-                      """must specify both an admin username and a keyFile. """
-                      """The default username is '__system'""")
-
-    #-d is to specify the doc manager file.
-    parser.add_option("-d", "--docManager", "--doc-managers", action="store",
-                      type="string", dest="doc_managers", help=
-                      """Used to specify the path to each doc manager """
-                      """file that will be used. DocManagers should be """
-                      """specified in the same order as their respective """
-                      """target addresses in the --target-urls option. """
-                      """URLs are assigned to doc managers """
-                      """respectively. Additional doc managers are """
-                      """implied to have no target URL. Additional URLs """
-                      """are implied to have the same doc manager type as """
-                      """the last doc manager for which a URL was """
-                      """specified. By default, Mongo Connector will use """
-                      """'doc_manager_simulator.py'.  It is recommended """
-                      """that all doc manager files be kept in the """
-                      """doc_managers folder in mongo-connector. For """
-                      """more information about making your own doc """
-                      """manager, see 'Writing Your Own DocManager' """
-                      """section of the wiki""")
-
-    #-g is the destination namespace
-    parser.add_option("-g", "--dest-namespace-set", action="store",
-                      type="string", dest="dest_ns_set", help=
-                      """Specify a destination namespace mapping. Each """
-                      """namespace provided in the --namespace-set option """
-                      """will be mapped respectively according to this """
-                      """comma-separated list. These lists must have """
-                      """equal length. The default is to use the identity """
-                      """mapping. This is currently only implemented """
-                      """for mongo-to-mongo connections.""")
-
-    #-s is to enable syslog logging.
-    parser.add_option("-s", "--enable-syslog", action="store_true",
-                      dest="enable_syslog", help=
-                      """Used to enable logging to syslog."""
-                      """ Use -l to specify syslog host.""")
-
-    #--syslog-host is to specify the syslog host.
-    parser.add_option("--syslog-host", action="store", type="string",
-                      dest="syslog_host", help=
-                      """Used to specify the syslog host."""
-                      """ The default is 'localhost:514'""")
-
-    #--syslog-facility is to specify the syslog facility.
-    parser.add_option("--syslog-facility", action="store", type="string",
-                      dest="syslog_facility", help=
-                      """Used to specify the syslog facility."""
-                      """ The default is 'user'""")
-
-    #-i to specify the list of fields to export
-    parser.add_option("-i", "--fields", action="store", type="string",
-                      dest="fields", help=
-                      """Used to specify the list of fields to export. """
-                      """Specify a field or fields to include in the export. """
-                      """Use a comma separated list of fields to specify multiple """
-                      """fields. The '_id', 'ns' and '_ts' fields are always """
-                      """exported.""")
-
-    #--auto-commit-interval to specify auto commit time interval
-    parser.add_option("--auto-commit-interval", action="store",
-                      dest="auto_commit_interval", type="int",
-                      help="""Seconds in-between calls for the Doc Manager"""
-                      """ to commit changes to the target system. A value of"""
-                      """ 0 means to commit after every write operation."""
-                      """ When left unset, Mongo Connector will not make"""
-                      """ explicit commits. Some systems have"""
-                      """ their own mechanism for adjusting a commit"""
-                      """ interval, which should be preferred to this"""
-                      """ option.""")
-
-    #--continue-on-error to continue to upsert documents during a collection
-    #dump, even if the documents cannot be inserted for some reason
-    parser.add_option("--continue-on-error", action="store_true",
-                      dest="continue_on_error", help=
-                      "By default, if any document fails to upsert"
-                      " during a collection dump, the entire operation fails."
-                      " When this flag is enabled, normally fatal errors"
-                      " will be caught and logged, allowing the collection"
-                      " dump to continue.\n"
-                      "Note: Applying oplog operations to an incomplete"
-                      " set of documents due to errors may cause undefined"
-                      " behavior. Use this flag to dump only.")
-
-    parser.add_option("-c", "--config-file", action="store",
-                      dest="config_file", help=
-                      "TODO")
-
-    #-v enables vebose logging
-    parser.add_option("-v", "--verbose", action="store_true",
-                      dest="verbose", default=False,
-                      help="Sets verbose logging to be on.")
-
-    #-w enable logging to a file
-    parser.add_option("-w", "--logfile", dest="logfile",
-                      help=("Log all output to a file rather than stream to "
-                            "stderr.   Omit to stream to stderr."))
-
-    (options, args) = parser.parse_args()
-
-    conf = config.Config()
-    if options.config_file:
-        json = open(options.config_file, 'r').read()
-        conf.add_config_json(json)
-    conf.add_options(options)
-    conf.validate()
+    validate_config(conf)
 
     logger = logging.getLogger()
     loglevel = logging.INFO

@@ -20,6 +20,7 @@ else:
     import unittest
 
 from mongo_connector import config, constants, errors
+from mongo_connector.connector import command_line_options, validate_config
 
 class MockOptions(object):
     def __init__(self, options):
@@ -32,22 +33,32 @@ class MockOptions(object):
 
 class TestConfig(unittest.TestCase):
     def setUp(self):
-        self.conf = config.Config()
+        self.reset_config()
+        self.options_by_name = {}
+        for option in command_line_options:
+            for name in option.names:
+                self.options_by_name[name] = option
+
+    def reset_config(self):
+        self.conf = config.Config(command_line_options)
 
     def load_json(self, d):
         # Serialize a python dictionary to json, then load it
         text = json.dumps(d)
-        self.conf.add_config_json(text)
+        self.conf.load_json(text)
 
-    def load_args(self, d):
-        # Load options from a python dictionary
-        options = MockOptions(d)
-        self.conf.add_options(options)
+    def load_options(self, d):
+        values = {}
+        for name, value in d.items():
+            values[self.options_by_name[name].dest] = value
+
+        for name, value in d.items():
+            self.options_by_name[name].apply(self.conf.config, values)
 
     def test_default(self):
         # Make sure default configuration is valid
         try:
-            self.conf.validate()
+            validate_config(self.conf)
         except Exception as e:
             self.assertFalse("Default configuration invalid: %s" % e.message)
 
@@ -96,41 +107,50 @@ class TestConfig(unittest.TestCase):
 
         # Test the assignment of individual options
         def test_option(arg_name, json_key, value):
-            self.assertEquals(self.conf[json_key], default[json_key])
-            self.load_args({arg_name : value})
+            self.load_options({arg_name : value})
             self.assertEquals(self.conf[json_key], value)
 
-        test_option('main_address', 'mainAddress', 'testMainAddress')
-        test_option('oplog_file', 'oplogFile', 'testOplogFile')
-        test_option('batch_size', 'batchSize', 69)
-        test_option('unique_key', 'uniqueKey', 'testUniqueKey')
-        test_option('password_file', 'passwordFile', 'testPasswordFile')
-        test_option('password', 'password', 'testPassword')
-        test_option('admin_username', 'adminUsername', 'testAdminUsername')
-        test_option('auto_commit_interval', 'autoCommitInterval', 69)
-        test_option('continue_on_error', 'continueOnError', True)
-        test_option('verbose', 'verbose', True)
-        test_option('logfile', 'logFile', 'testLogFile')
+        test_option('-m', 'mainAddress', 'testMainAddressShort')
+        test_option('--main', 'mainAddress', 'testMainAddressLong')
+        test_option('-o', 'oplogFile', 'testOplogFileShort')
+        test_option('--oplog-ts', 'oplogFile', 'testOplogFileLong')
+        test_option('--batch-size', 'batchSize', 69)
+        test_option('-u', 'uniqueKey', 'testUniqueKeyShort')
+        test_option('--unique-key', 'uniqueKey', 'testUniqueKeyLong')
+        test_option('-f', 'passwordFile', 'testPasswordFileShort')
+        test_option('--password-file', 'passwordFile', 'testPasswordFileLong')
+        test_option('-p', 'password', 'testPasswordShort')
+        test_option('--password', 'password', 'testPasswordLong')
+        test_option('-a', 'adminUsername', 'testAdminUsernameShort')
+        test_option('--admin-username', 'adminUsername', 'testAdminUsernameLong')
+        test_option('--auto-commit-interval', 'autoCommitInterval', 69)
+        test_option('--continue-on-error', 'continueOnError', True)
+        test_option('-v', 'verbose', True)
+        test_option('--verbose', 'verbose', False)
+        test_option('-w', 'logFile', 'testLogFileShort')
+        test_option('--logfile', 'logFile', 'testLogFileLong')
 
         def test_syslog_option(arg_name, json_key, value):
-            self.assertEquals(self.conf['syslog'][json_key],
-                              default['syslog'][json_key])
-            self.load_args({arg_name : value})
+            self.load_options({arg_name : value})
             self.assertEquals(self.conf['syslog'][json_key], value)
 
-        test_syslog_option('enable_syslog', 'enabled', True)
-        test_syslog_option('syslog_host', 'host', 'testHost')
-        test_syslog_option('syslog_facility', 'facility', 'testFacility')
+        test_syslog_option('-s', 'enabled', True)
+        test_syslog_option('--enable-syslog', 'enabled', False)
+        test_syslog_option('--syslog-host', 'host', 'testHost')
+        test_syslog_option('--syslog-facility', 'facility', 'testFacility')
 
-        self.assertEquals(self.conf['fields'], default['fields'])
-        self.load_args({'fields': 'a,b,c'})
+        self.load_options({'-i': 'a,b,c'})
         self.assertEquals(self.conf['fields'], ['a', 'b', 'c'])
+
+        self.load_options({'--fields': 'd,e'})
+        self.assertEquals(self.conf['fields'], ['d', 'e'])
+
 
     def test_namespace_set(self):
         # test namespace_set and dest_namespace_set
-        self.load_args({
-            "ns_set": "source_ns_1,source_ns_2,source_ns_3",
-            "dest_ns_set": "dest_ns_1,dest_ns_2,dest_ns_3"
+        self.load_options({
+            "-n": "source_ns_1,source_ns_2,source_ns_3",
+            "-g": "dest_ns_1,dest_ns_2,dest_ns_3"
         })
         self.assertEquals(self.conf['namespaceSet'],
                           ['source_ns_1', 'source_ns_2', 'source_ns_3'])
@@ -142,37 +162,37 @@ class TestConfig(unittest.TestCase):
     def test_namespace_set_validation(self):
         # duplicate ns_set
         args = {
-            "ns_set": "a,a,b",
-            "dest_ns_set": "1,2,3"
+            "-n": "a,a,b",
+            "-g": "1,2,3"
         }
-        self.assertRaises(errors.InvalidConfiguration, self.load_args, args)
+        self.assertRaises(errors.InvalidConfiguration, self.load_options, args)
 
         # duplicate dest_ns_set
         args = {
-            "ns_set": "a,b,c",
-            "dest_ns_set": "1,3,3"
+            "-n": "a,b,c",
+            "--dest-namespace-set": "1,3,3"
         }
-        self.assertRaises(errors.InvalidConfiguration, self.load_args, args)
+        self.assertRaises(errors.InvalidConfiguration, self.load_options, args)
 
         # len(ns_set) < len(dest_ns_set)
         args = {
-            "ns_set": "a,b,c",
-            "dest_ns_set": "1,2,3,4"
+            "--namespace-set": "a,b,c",
+            "-g": "1,2,3,4"
         }
-        self.assertRaises(errors.InvalidConfiguration, self.load_args, args)
+        self.assertRaises(errors.InvalidConfiguration, self.load_options, args)
 
         # len(ns_set) > len(dest_ns_set)
         args = {
-            "ns_set": "a,b,c,d",
-            "dest_ns_set": "1,2,3"
+            "--namespace-set": "a,b,c,d",
+            "--dest-namespace-set": "1,2,3"
         }
-        self.assertRaises(errors.InvalidConfiguration, self.load_args, args)
+        self.assertRaises(errors.InvalidConfiguration, self.load_options, args)
 
     def test_doc_managers_from_args(self):
         # Test basic docmanager construction from args
         args = {
-            "doc_managers": "a,b",
-            "target_urls": "1,2"
+            "-d": "a,b",
+            "-t": "1,2"
         }
         docManagers = [
             {
@@ -184,15 +204,23 @@ class TestConfig(unittest.TestCase):
                 'targetUrl': '2'
             }
         ]
-        self.load_args(args)
+        self.load_options(args)
         self.assertEquals(self.conf['docManagers'], docManagers);
 
         del self.conf.config['docManagers'] # reset doc managers
 
+        # no doc_manager but target_urls
+        args = {
+            "-d": None,
+            "-t": "1,2"
+        }
+        self.assertRaises(errors.InvalidConfiguration,
+                          self.load_options, args)
+
         # fewer doc_managers than target_urls
         args = {
-            "doc_managers": "a",
-            "target_urls": "1,2"
+            "--docManager": "a",
+            "--target-url": "1,2"
         }
         docManagers = [
             {
@@ -204,15 +232,15 @@ class TestConfig(unittest.TestCase):
                 'targetUrl': '2'
             }
         ]
-        self.load_args(args)
+        self.load_options(args)
         self.assertEquals(self.conf['docManagers'], docManagers);
 
         del self.conf.config['docManagers'] # reset doc managers
 
         # fewer target_urls than doc_managers
         args = {
-            "doc_managers": "a,b",
-            "target_urls": "1"
+            "--doc-managers": "a,b",
+            "--target-urls": "1"
         }
         docManagers = [
             {
@@ -224,17 +252,17 @@ class TestConfig(unittest.TestCase):
                 'targetUrl': None
             }
         ]
-        self.load_args(args)
+        self.load_options(args)
         self.assertEquals(self.conf['docManagers'], docManagers);
 
         # don't reset doc managers
 
         # Test that args can't overwrite docManager configurations
         args = {
-            'doc_managers': 'a',
-            'target_urls': '1'
+            '-d': 'a',
+            '-t': '1'
         }
-        self.assertRaises(errors.InvalidConfiguration, self.load_args, args)
+        self.assertRaises(errors.InvalidConfiguration, self.load_options, args)
 
     def test_config_validation(self):
         # can't log both to syslog and to logfile
@@ -245,22 +273,25 @@ class TestConfig(unittest.TestCase):
             }
         }
         self.load_json(test_config)
-        self.assertRaises(errors.InvalidConfiguration, self.conf.validate)
+        self.assertRaises(errors.InvalidConfiguration, 
+                          validate_config, self.conf)
 
-        self.conf = config.Config() # reset configuration
+        self.reset_config()
 
         # can't specify a username without a password
         test_config = {
             'adminUsername': 'testUsername'
         }
         self.load_json(test_config)
-        self.assertRaises(errors.InvalidConfiguration, self.conf.validate)
+        self.assertRaises(errors.InvalidConfiguration, 
+                          validate_config, self.conf)
 
-        self.conf = config.Config() # reset configuration
+        self.reset_config()
 
         # auto commit interval can't be negative
         test_config = {
             'autoCommitInterval': -1
         }
         self.load_json(test_config)
-        self.assertRaises(errors.InvalidConfiguration, self.conf.validate)
+        self.assertRaises(errors.InvalidConfiguration, 
+                          validate_config, self.conf)

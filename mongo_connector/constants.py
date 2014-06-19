@@ -37,7 +37,6 @@ DEFAULT_CONFIG = {
     'autoCommitInterval': DEFAULT_COMMIT_INTERVAL,
     'continueOnError': False,
     'verbose': False,
-#    'logLevel': 0,
 
     'logFile': None,
     'syslog': {
