@@ -57,10 +57,7 @@ class TestConfig(unittest.TestCase):
 
     def test_default(self):
         # Make sure default configuration is valid
-        try:
-            validate_config(self.conf)
-        except Exception as e:
-            self.assertFalse("Default configuration invalid: %s" % e.message)
+        validate_config(self.conf)
 
     def test_parse_json(self):
         # Test for basic json parsing correctness
