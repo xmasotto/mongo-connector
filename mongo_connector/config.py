@@ -16,9 +16,69 @@ import json
 
 from mongo_connector import constants, errors
 
+class Option(object):
+    def __init__(self, *args, action=None, type=None, default=None, help=None,
+                 apply_function=None):
+        self.args = args
+        self.action = action
+        self.type = type
+        self.default = default
+        self.help = help
+        self.apply_function = apply_function
+
+    def add_option(parser):
+        option = parser.add_option(*self.args,
+                          action=self.action,
+                          type=self.type,
+                          dest=self.dest,
+                          help=self.help)
+        self.dest = option.dest
+    
+    def apply(self, config, values):
+        if self.apply_function:
+            self.apply_function(config, values)
+
+class SimpleOption(Option):
+    def __init__(self, *args, action=None, type=None, default=None, help=None,
+                 config_property=None):
+
+        def simple_apply(config, values):
+            config[config_property] = values[self.dest]
+
+        Option.__init__(self, *args,
+                        action=action, type=type, default=default, help=help,
+                        apply_function=simple_apply)
+
 class Config(object):
-    def __init__(self):
-        self.config = copy.deepcopy(constants.DEFAULT_CONFIG)
+    def __init__(self, options):
+        # initialize the default config
+        self.config = {}
+        for option in options:
+            if option.default is not None:
+                option.apply(self.config, option.default)
+
+        # parse the command line options
+        parser = optparse.OptionParser()
+        for option in options:
+            option.add_option(parser)
+        parsed_options, args = parser.parse_args()
+
+        # load the config file
+        if parsed_options.config_file:
+            try:
+                with open(parsed_options.config_file) as f:
+                    parsed_config = json.loads(f.read())
+                    self.merge_dicts(self.config, parsed_config)
+            except Exception as e:
+                raise errors.InvalidConfiguration(
+                    "Exception occured while parsing config file: %s"
+                    % e.message)
+
+        # apply the command line arguments
+        for option in options:
+            values = parsed_options.__dict__
+            if value:
+                option.apply(self.config, values)
 
     def __getitem__(self, key):
         return self.config[key]
@@ -30,6 +90,11 @@ class Config(object):
                     self.merge_dicts(left[k], right[k])
             else:
                 left[k] = right[k]
+
+"""
+    def __init__(self):
+        self.config = copy.deepcopy(constants.DEFAULT_CONFIG)
+
 
     def add_config_json(self, text):
         try:
@@ -149,3 +214,4 @@ class Config(object):
             if self.config['autoCommitInterval'] < 0:
                 raise errors.InvalidConfiguration(
                     "--auto-commit-interval must be non-negative")
+"""

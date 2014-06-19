@@ -400,6 +400,13 @@ def main():
     """ Starts the mongo connector (assuming CLI)
     """
     parser = optparse.OptionParser()
+    options = []
+
+    def add_option(*args, **kwargs):
+        options.append(config.Option(*args, **kwargs))
+
+    def add_simple_option(*args, **kwargs):
+        options.append(config.SimpleOption(*args, **kwargs))
 
     #-m is for the main address, which is a host:port pair, ideally of the
     #mongos. For non sharded clusters, it can be the primary.
