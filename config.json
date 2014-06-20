@@ -4,9 +4,7 @@
     "noDump": false,
     "batchSize": -1,
     "uniqueKey": "_id",
-    "autoCommitInterval": null,
-    "continueOnError": false,
-    "verbose": false,
+    "verbose": 0,
 
     "logFile": "mongo-connector.log",
     "syslog": {
@@ -15,9 +13,11 @@
     },
 
     "__comment__": "To enable the following fields, remove the preceding '__'",
-    "__passwordFile": "passwordFile",
-    "__password": "password",
+
     "__adminUsername": "username",
+    "__password": "password",
+    "__passwordFile": "passwordFile",
+
     "__fields": ["field1", "field2", "field3"],
     "__namespaceSet": ["dbx9.agenda.a", "dby.agendaitems.a"],
     "__destMapping": {"source1": "dest1", "source2":"dest2"},
@@ -25,7 +25,9 @@
     "docManagers": [
 	{
 	    "docManager": "/Users/xmasotto/coding/mongo-connector/mongo_connector/doc_managers/elastic_doc_manager.py",
-	    "targetURL": "localhost:9200"
+	    "targetURL": "localhost:9200",
+	    "uniqueKey": "_id",
+	    "autoCommitInterval": null
 	}
     ]
 }

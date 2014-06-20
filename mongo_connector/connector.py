@@ -130,16 +130,22 @@ class Connector(threading.Thread):
         self.fields = fields
 
         try:
-            docman_kwargs = {"unique_key": u_key,
-                             "namespace_set": ns_set,
-                             "auto_commit_interval": auto_commit_interval}
+            docman_kwargs = {"namespace_set": ns_set}
 
             # No doc managers specified, using simulator
-            if doc_manager is None or len(doc_manager_modules) == 0:
+            if len(doc_manager_modules) == 0:
                 self.doc_managers = [simulator.DocManager(**docman_kwargs)]
             else:
                 self.doc_managers = []
                 for i, d in enumerate(doc_manager_modules):
+
+                    # assign unique_key and auto_commit_interval per document manager
+                    docman_kwargs['unique_key'] = u_key[i] if type(u_key) is list else u_key
+                    if type(auto_commit_interval) is list:
+                        docman_kwargs['auto_commit_interval'] = auto_commit_interval[i]
+                    else:
+                        docman_kwargs['auto_commit_interval'] = auto_commit_interval
+
                     # self.target_urls may be shorter than
                     # self.doc_managers, or left as None
                     if self.target_urls and i < len(self.target_urls):
@@ -459,7 +465,7 @@ def get_config_options():
                 " but no doc manager!")
 
     add_option(["-t", "--target-url", "--target-urls"],
-               apply_function=apply_target_urls, config_key=None,
+               apply_function=apply_target_urls,
                dest="target_urls", help=
                """Specify the URL to each target system being """
                """used. For example, if you were using Solr out of """
@@ -500,8 +506,7 @@ def get_config_options():
 
     #-u is to specify the mongoDB field that will serve as the unique key
     #for the target system,
-    add_option(["-u", "--unique-key"], dest="unique_key",
-                  config_key="uniqueKey", default="_id", help=
+    add_option(["-u", "--unique-key"], dest="unique_key", help=
                   """The name of the MongoDB field that will serve """
                   """as the unique key for the target system. """
                   """Note that this option does not apply """
@@ -537,6 +542,7 @@ def get_config_options():
 
     #-d is to specify the doc manager file.
     def apply_doc_managers(option, values):
+        # TODO add unique_key and auto_commit_interval
         if option.value:
             raise errors.InvalidConfiguration(
                 "Doc Managers settings in the configuration file"
@@ -549,6 +555,11 @@ def get_config_options():
             if 'target_urls' in values:
                 target_urls = values['target_urls'].split(',')
 
+            auto_commit_interval = values.get('auto_commit_interval') or \
+                                   constants.DEFAULT_COMMIT_INTERVAL
+            unique_key = values.get('unique_key') or \
+                         constants.DEFAULT_UNIQUE_KEY
+
             # target_urls may be shorter than doc_managers
             for i, d in enumerate(doc_managers):
                 doc_manager = {'docManager': d}
@@ -556,6 +567,10 @@ def get_config_options():
                     doc_manager['targetURL'] = target_urls[i]
                 else:
                     doc_manager['targetURL'] = None
+
+                doc_manager['autoCommitInterval'] = auto_commit_interval
+                doc_manager['uniqueKey'] = unique_key
+
                 option.value.append(doc_manager)
 
             # If more target URLS were given than doc managers, may
@@ -563,6 +578,8 @@ def get_config_options():
             for target_url in target_urls[len(doc_managers):]:
                 doc_manager = {'docManager': doc_managers[-1]}
                 doc_manager['targetURL'] = target_url
+                doc_manager['autoCommitInterval'] = auto_commit_interval
+                doc_manager['uniqueKey'] = unique_key
                 option.value.append(doc_manager)
 
     add_option(["-d", "--docManager", "--doc-managers"],
@@ -648,8 +665,7 @@ def get_config_options():
 
     #--auto-commit-interval to specify auto commit time interval
     add_option(["--auto-commit-interval"], type="int",
-               dest="auto_commit_interval", config_key="autoCommitInterval",
-               default=constants.DEFAULT_COMMIT_INTERVAL, help=
+               dest="auto_commit_interval", help=
                """Seconds in-between calls for the Doc Manager"""
                """ to commit changes to the target system. A value of"""
                """ 0 means to commit after every write operation."""
@@ -674,8 +690,12 @@ def get_config_options():
                " behavior. Use this flag to dump only.")
 
     #-v enables vebose logging
+    def apply_verbose(option, values):
+        option.value = 1
+
     add_option(["-v", "--verbose"], action="store_true",
                dest="verbose", config_key="verbose",
+               apply_function=apply_verbose,
                default=False, help=
                "Sets verbose logging to be on.")
 
@@ -702,10 +722,20 @@ def validate_config(conf):
             raise errors.InvalidConfiguration(
                 "Admin username specified without password!")
 
-    if conf['autoCommitInterval'] is not None:
-        if conf['autoCommitInterval'] < 0:
+    if conf['docManagers']:
+        if type(conf['docManagers']) != list:
             raise errors.InvalidConfiguration(
-                "--auto-commit-interval must be non-negative")
+                "docManagers must be a list.")
+
+        for dm in conf['docManagers']:
+            if type(dm) != dict or 'docManager' not in dm:
+                raise errors.InvalidConfiguration(
+                    "Every element of docManagers"
+                    " must contain 'docManager' property.")
+            if dm.get('autoCommitInterval'):
+                if dm['autoCommitInterval'] < 0:
+                    raise errors.InvalidConfiguration(
+                        "autoCommitInterval must be non-negative.")
 
 def main():
     """ Starts the mongo connector (assuming CLI)
@@ -717,7 +747,7 @@ def main():
 
     logger = logging.getLogger()
     loglevel = logging.INFO
-    if conf['verbose']:
+    if conf['verbose'] > 0:
         loglevel = logging.DEBUG
     logger.setLevel(loglevel)
 
@@ -747,9 +777,14 @@ def main():
     if conf['docManagers']:
         doc_managers = [dm['docManager'] for dm in conf['docManagers']]
         target_urls = [dm['targetURL'] for dm in conf['docManagers']]
+        unique_keys = [dm.get('uniqueKey') for dm in conf['docManagers']]
+        auto_commit_intervals = [dm.get('autoCommitInterval') 
+                                 for dm in conf['docManagers']]
     else:
         doc_managers = []
         target_urls = []
+        unique_keys = None
+        auto_commit_intervals=None
 
     if len(doc_managers) == 0:
         logger.info('No doc managers specified, using simulator.')
@@ -775,7 +810,7 @@ def main():
         oplog_checkpoint=conf['oplogFile'],
         target_url=target_urls,
         ns_set=ns_set,
-        u_key=conf['uniqueKey'],
+        u_key=unique_keys,
         auth_key=key,
         doc_manager=doc_managers,
         auth_username=conf['adminUsername'],
@@ -783,7 +818,7 @@ def main():
         batch_size=conf['batchSize'],
         fields=fields,
         dest_mapping=dest_mapping,
-        auto_commit_interval=conf['autoCommitInterval'],
+        auto_commit_interval=auto_commit_intervals,
         continue_on_error=conf['continueOnError']
     )
     connector.start()

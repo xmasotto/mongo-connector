@@ -60,11 +60,9 @@ class TestConfig(unittest.TestCase):
             'oplogFile': 'testOplogFile',
             'noDump': True,
             'batchSize': 69,
-            'uniqueKey': 'testUniqueKey',
             'passwordFile': 'testPasswordFile',
             'password': 'testPassword',
             'adminUsername': 'testAdminUsername',
-            'autoCommitInterval': 69,
             'continueOnError': True,
             'verbose': True,
 
@@ -87,7 +85,6 @@ class TestConfig(unittest.TestCase):
 
         self.assertEquals(self.conf['syslog.enabled'], test_config['syslog']['enabled'])
         self.assertEquals(self.conf['syslog.host'], test_config['syslog']['host'])
-        self.assertEquals(self.conf['syslog.facility'], test_config['syslog']['facility'])
 
     def test_basic_options(self):
         # Test the assignment of individual options
@@ -100,15 +97,12 @@ class TestConfig(unittest.TestCase):
         test_option('-o', 'oplogFile', 'testOplogFileShort')
         test_option('--oplog-ts', 'oplogFile', 'testOplogFileLong')
         test_option('--batch-size', 'batchSize', 69)
-        test_option('-u', 'uniqueKey', 'testUniqueKeyShort')
-        test_option('--unique-key', 'uniqueKey', 'testUniqueKeyLong')
         test_option('-f', 'passwordFile', 'testPasswordFileShort')
         test_option('--password-file', 'passwordFile', 'testPasswordFileLong')
         test_option('-p', 'password', 'testPasswordShort')
         test_option('--password', 'password', 'testPasswordLong')
         test_option('-a', 'adminUsername', 'testAdminUsernameShort')
         test_option('--admin-username', 'adminUsername', 'testAdminUsernameLong')
-        test_option('--auto-commit-interval', 'autoCommitInterval', 69)
         test_option('--continue-on-error', 'continueOnError', True)
         test_option('-w', 'logFile', 'testLogFileShort')
         test_option('--logfile', 'logFile', 'testLogFileLong')
@@ -128,7 +122,6 @@ class TestConfig(unittest.TestCase):
 
         self.load_options({'--fields': 'd,e'})
         self.assertEquals(self.conf['fields'], ['d', 'e'])
-
 
     def test_namespace_set(self):
         # test namespace_set and dest_namespace_set
@@ -176,16 +169,22 @@ class TestConfig(unittest.TestCase):
         # Test basic docmanager construction from args
         args = {
             "-d": "a,b",
-            "-t": "1,2"
+            "-t": "1,2",
+            '-u': "id",
+            '--auto-commit-interval': 10
         }
         docManagers = [
             {
                 'docManager': 'a',
-                'targetURL': '1'
+                'targetURL': '1',
+                'uniqueKey': 'id',
+                'autoCommitInterval': 10
             },
             {
                 'docManager': 'b',
-                'targetURL': '2'
+                'targetURL': '2',
+                'uniqueKey': 'id',
+                'autoCommitInterval': 10
             }
         ]
         self.load_options(args)
@@ -209,11 +208,15 @@ class TestConfig(unittest.TestCase):
         docManagers = [
             {
                 'docManager': 'a',
-                'targetURL': '1'
+                'targetURL': '1',
+                'uniqueKey': constants.DEFAULT_UNIQUE_KEY,
+                'autoCommitInterval': constants.DEFAULT_COMMIT_INTERVAL
             },
             {
                 'docManager': 'a',
-                'targetURL': '2'
+                'targetURL': '2',
+                'uniqueKey': constants.DEFAULT_UNIQUE_KEY,
+                'autoCommitInterval': constants.DEFAULT_COMMIT_INTERVAL
             }
         ]
         self.load_options(args)
@@ -229,11 +232,15 @@ class TestConfig(unittest.TestCase):
         docManagers = [
             {
                 'docManager': 'a',
-                'targetUrl': '1'
+                'targetURL': '1',
+                'uniqueKey': constants.DEFAULT_UNIQUE_KEY,
+                'autoCommitInterval': constants.DEFAULT_COMMIT_INTERVAL
             },
             {
                 'docManager': 'b',
-                'targetUrl': None
+                'targetURL': None,
+                'uniqueKey': constants.DEFAULT_UNIQUE_KEY,
+                'autoCommitInterval': constants.DEFAULT_COMMIT_INTERVAL
             }
         ]
         self.load_options(args)
@@ -272,9 +279,34 @@ class TestConfig(unittest.TestCase):
 
         self.reset_config()
 
+        # docManagers must be a list
+        test_config = {
+            'docManagers': "hello"
+        }
+        self.load_json(test_config)
+        self.assertRaises(errors.InvalidConfiguration, 
+                          validate_config, self.conf)
+
+        # every element of docManagers must contain a 'docManager' property
+        test_config = {
+            'docManagers': [
+                {
+                    'targetURL': 'testTargetURL'
+                }
+            ]
+        }
+        self.load_json(test_config)
+        self.assertRaises(errors.InvalidConfiguration, 
+                          validate_config, self.conf)
+
         # auto commit interval can't be negative
         test_config = {
-            'autoCommitInterval': -1
+            'docManagers': [
+                {
+                    'docManager': 'testDocManager',
+                    'autoCommitInterval': -1
+                }
+            ]
         }
         self.load_json(test_config)
         self.assertRaises(errors.InvalidConfiguration, 

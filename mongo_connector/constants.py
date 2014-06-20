@@ -24,3 +24,6 @@ DEFAULT_COMMIT_INTERVAL = None
 # DocManager. This only affects DocManagers that cannot stream their
 # requests.
 DEFAULT_MAX_BULK = 500
+
+# Default unique key to pass to the document manager.
+DEFAULT_UNIQUE_KEY="_id"
