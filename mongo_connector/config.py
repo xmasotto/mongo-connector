@@ -13,6 +13,7 @@
 
 import copy
 import json
+import logging
 import optparse
 import sys
 
@@ -37,8 +38,7 @@ class Option(object):
         self.value = self.default
     
     def apply(self, values):
-        if self.apply_function:
-            self.apply_function(self, values)
+        self.apply_function(self, values)
 
 class Config(object):
     def __init__(self, options):
@@ -51,7 +51,7 @@ class Config(object):
         # parse the command line options
         parser = optparse.OptionParser()
         for option in self.options:
-            if option.names and len(option.names) > 0:
+            if option.names:
                 parser.add_option(*option.names, 
                                   dest=option.dest,
                                   action=option.action,
@@ -92,3 +92,7 @@ class Config(object):
 
             elif type(obj[k]) is dict:
                 self.unpack(obj[k], prefix + k + '.')
+                
+            else:
+                if not prefix.startswith("__") and not k.startswith("__"):
+                    logging.warning("Unrecognized option: %s" % (prefix + k))

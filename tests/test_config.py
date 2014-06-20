@@ -64,7 +64,7 @@ class TestConfig(unittest.TestCase):
             'password': 'testPassword',
             'adminUsername': 'testAdminUsername',
             'continueOnError': True,
-            'verbose': True,
+            'verbosity': 1,
 
             'logFile': "testLogFile",
             'syslog': {
@@ -83,8 +83,10 @@ class TestConfig(unittest.TestCase):
         for test_key in test_keys:
             self.assertEquals(self.conf[test_key], test_config[test_key])
 
-        self.assertEquals(self.conf['syslog.enabled'], test_config['syslog']['enabled'])
-        self.assertEquals(self.conf['syslog.host'], test_config['syslog']['host'])
+        self.assertEquals(self.conf['syslog.enabled'], 
+                          test_config['syslog']['enabled'])
+        self.assertEquals(self.conf['syslog.host'], 
+                          test_config['syslog']['host'])
 
     def test_basic_options(self):
         # Test the assignment of individual options
@@ -101,17 +103,17 @@ class TestConfig(unittest.TestCase):
         test_option('--password-file', 'passwordFile', 'testPasswordFileLong')
         test_option('-p', 'password', 'testPasswordShort')
         test_option('--password', 'password', 'testPasswordLong')
-        test_option('-a', 'adminUsername', 'testAdminUsernameShort')
-        test_option('--admin-username', 'adminUsername', 'testAdminUsernameLong')
+        test_option('-a', 'adminUsername', 'testAdminUsername1')
+        test_option('--admin-username', 'adminUsername', 'testAdminUsername2')
         test_option('--continue-on-error', 'continueOnError', True)
         test_option('-w', 'logFile', 'testLogFileShort')
         test_option('--logfile', 'logFile', 'testLogFileLong')
         test_option('--syslog-host', 'syslog.host', "testSyslogHost")
         test_option('--syslog-facility', 'syslog.facility', "testSyslogFaciliy")
 
-        test_option('-v', 'verbose', True)
-        self.conf.get_option('verbose').value = False
-        test_option('--verbose', 'verbose', True)
+        test_option('-v', 'verbosity', 1)
+        self.conf.get_option('verbosity').value = 0
+        test_option('--verbose', 'verbosity', 1)
 
         test_option('-s', 'syslog.enabled', True)
         self.conf.get_option('syslog.enabled').value = False

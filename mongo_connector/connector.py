@@ -139,12 +139,19 @@ class Connector(threading.Thread):
                 self.doc_managers = []
                 for i, d in enumerate(doc_manager_modules):
 
-                    # assign unique_key and auto_commit_interval per document manager
-                    docman_kwargs['unique_key'] = u_key[i] if type(u_key) is list else u_key
-                    if type(auto_commit_interval) is list:
-                        docman_kwargs['auto_commit_interval'] = auto_commit_interval[i]
+                    # assign unique_key and auto_commit_interval
+                    # per document manager
+                    if type(u_key) is list:
+                        docman_kwargs['unique_key'] = u_key[i]
                     else:
-                        docman_kwargs['auto_commit_interval'] = auto_commit_interval
+                        docman_kwargs['unique_key'] = u_key
+
+                    if type(auto_commit_interval) is list:
+                        docman_kwargs[
+                            'auto_commit_interval'] = auto_commit_interval[i]
+                    else:
+                        docman_kwargs[
+                            'auto_commit_interval'] = auto_commit_interval
 
                     # self.target_urls may be shorter than
                     # self.doc_managers, or left as None
@@ -542,7 +549,6 @@ def get_config_options():
 
     #-d is to specify the doc manager file.
     def apply_doc_managers(option, values):
-        # TODO add unique_key and auto_commit_interval
         if option.value:
             raise errors.InvalidConfiguration(
                 "Doc Managers settings in the configuration file"
@@ -689,12 +695,12 @@ def get_config_options():
                " set of documents due to errors may cause undefined"
                " behavior. Use this flag to dump only.")
 
-    #-v enables vebose logging
+    #-v enables verbose logging
     def apply_verbose(option, values):
         option.value = 1
 
     add_option(["-v", "--verbose"], action="store_true",
-               dest="verbose", config_key="verbose",
+               dest="verbose", config_key="verbosity",
                apply_function=apply_verbose,
                default=False, help=
                "Sets verbose logging to be on.")
@@ -705,9 +711,10 @@ def get_config_options():
                "Log all output to a file rather than stream to "
                "stderr. Omit to stream to stderr.")
 
-    # config file stuff!
+    #-c to load a config file
     add_option(["-c", "--config-file"], dest="config_file", help=
-               "TODO")
+               "Specify a JSON file to load configurations from. You can find"
+               " an example config file at mongo-connector/config.json")
 
     return result
 
@@ -747,7 +754,7 @@ def main():
 
     logger = logging.getLogger()
     loglevel = logging.INFO
-    if conf['verbose'] > 0:
+    if conf['verbosity'] > 0:
         loglevel = logging.DEBUG
     logger.setLevel(loglevel)
 

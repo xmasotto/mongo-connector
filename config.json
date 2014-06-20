@@ -3,8 +3,7 @@
     "oplogFile": "oplog.timestamp",
     "noDump": false,
     "batchSize": -1,
-    "uniqueKey": "_id",
-    "verbose": 0,
+    "verbosity": 0,
 
     "logFile": "mongo-connector.log",
     "syslog": {
@@ -19,8 +18,8 @@
     "__passwordFile": "passwordFile",
 
     "__fields": ["field1", "field2", "field3"],
-    "__namespaceSet": ["test.source1", "test.source2"],
-    "__destMapping": {"test.source1": "test.dest1", "test.source2": "test.dest2"},
+    "__namespaceSet": ["db.source1", "db.source2"],
+    "__destMapping": {"db.source1": "db.dest1", "db.source2": "db.dest2"},
 
     "docManagers": [
 	{

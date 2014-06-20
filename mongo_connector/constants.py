@@ -25,5 +25,6 @@ DEFAULT_COMMIT_INTERVAL = None
 # requests.
 DEFAULT_MAX_BULK = 500
 
-# Default unique key to pass to the document manager.
+# The default MongoDB field that will serve as the unique key for the 
+# target system.
 DEFAULT_UNIQUE_KEY="_id"
