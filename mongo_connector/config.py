@@ -14,8 +14,10 @@
 import copy
 import json
 import optparse
+import sys
 
 from mongo_connector import constants, errors
+from mongo_connector.compat import reraise
 
 def default_apply_function(option, values):
     option.value = values[option.dest]
@@ -63,10 +65,8 @@ class Config(object):
             try:
                 with open(parsed_options.config_file) as f:
                     self.load_json(f.read())
-            except Exception as e: # more specific
-                raise errors.InvalidConfiguration(
-                    "Exception occured while parsing config file: %s"
-                    % e.message)
+            except (OSError, IOError, ValueError) as e:
+                reraise(errors.InvalidConfiguration, *sys.exc_info()[1:])
 
         # apply the command line arguments
         values = parsed_options.__dict__
