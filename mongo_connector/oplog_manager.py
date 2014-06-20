@@ -42,6 +42,7 @@ class OplogThread(threading.Thread):
                  auth_username, repl_set=None, collection_dump=True,
                  batch_size=DEFAULT_BATCH_SIZE, fields=None,
                  dest_mapping={}, continue_on_error=False, gridfs_set=None):
+
         """Initialize the oplog thread.
         """
         super(OplogThread, self).__init__()
@@ -487,7 +488,6 @@ class OplogThread(threading.Thread):
                         attempts += 1
                         time.sleep(1)
 
-
         def upsert_each(dm):
             num_inserted = 0
             num_failed = 0
@@ -538,7 +538,7 @@ class OplogThread(threading.Thread):
                 for doc in self.docs_to_dump(self.gridfs_files_set):
                     dm.upsert_file(
                         GridFSFile(self.main_connection, doc))
-                
+
             except:
                 # Likely exceptions:
                 # pymongo.errors.OperationFailure,
