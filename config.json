@@ -1,35 +1,31 @@
 {
-    "mainAddress": "localhost:27217",
-    "oplogFile": "oplog.txt",
+    "mainAddress": "localhost:27017",
+    "oplogFile": "oplog.timestamp",
     "noDump": false,
-    "batchSize": 1,
+    "batchSize": -1,
     "uniqueKey": "_id",
-    "passwordFile": "passwordFile",
-    "password": "password",
-    "adminUsername": "username",
-    "autoCommitInterval": 0,
+    "autoCommitInterval": null,
     "continueOnError": false,
     "verbose": false,
 
-    "logFile": "log.txt",
+    "logFile": "mongo-connector.log",
     "syslog": {
 	"enabled": false,
-	"host": "localhost:514",
-	"facility": "user"
+	"host": "localhost:514"
     },
 
-    "namespaceSet": ["dbx9.agenda.a", "dby.agendaitems.a"],
-    "destMapping": {"source1": "dest1", "source2":"dest2"},
-    "fields": ["field1", "field2", "field3"],
+    "__comment__": "To enable the following fields, remove the preceding '__'",
+    "__passwordFile": "passwordFile",
+    "__password": "password",
+    "__adminUsername": "username",
+    "__fields": ["field1", "field2", "field3"],
+    "__namespaceSet": ["dbx9.agenda.a", "dby.agendaitems.a"],
+    "__destMapping": {"source1": "dest1", "source2":"dest2"},
 
     "docManagers": [
 	{
-	    "docManager": "doc_managers/file_doc_manager",
-	    "targetUrl": "~/mongo-connector/track.txt"
-	},
-	{
-	    "docManager": "doc_managers/solr_doc_manager",
-	    "targetUrl": "http://www.dnsname.com/solr/core"
+	    "docManager": "/Users/xmasotto/coding/mongo-connector/mongo_connector/doc_managers/elastic_doc_manager.py",
+	    "targetURL": "localhost:9200"
 	}
     ]
 }

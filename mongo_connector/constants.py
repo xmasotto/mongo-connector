@@ -24,28 +24,3 @@ DEFAULT_COMMIT_INTERVAL = None
 # DocManager. This only affects DocManagers that cannot stream their
 # requests.
 DEFAULT_MAX_BULK = 500
-
-DEFAULT_CONFIG = {
-    'mainAddress': 'localhost:27217',
-    'oplogFile': 'oplog.timestamp',
-    'noDump': False,
-    'batchSize': DEFAULT_BATCH_SIZE,
-    'uniqueKey': '_id',
-    'passwordFile': None,
-    'password': None,
-    'adminUsername': '__system',
-    'autoCommitInterval': DEFAULT_COMMIT_INTERVAL,
-    'continueOnError': False,
-    'verbose': False,
-
-    'logFile': None,
-    'syslog': {
-        'enabled': False,
-        'host': 'localhost:514',
-        'facility': 'user'
-    },
-
-    'namespaceSet': [],
-    'destMapping': {},
-    'fields': None
-}

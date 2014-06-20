@@ -20,27 +20,20 @@ else:
     import unittest
 
 from mongo_connector import config, constants, errors
-from mongo_connector.connector import command_line_options, validate_config
-
-class MockOptions(object):
-    def __init__(self, options):
-        self.options = options
-    def __getattr__(self, key):
-        if key in self.options:
-            return self.options[key]
-        else:
-            return None
+from mongo_connector.connector import get_config_options
+from mongo_connector.connector import validate_config
 
 class TestConfig(unittest.TestCase):
     def setUp(self):
         self.reset_config()
         self.options_by_name = {}
-        for option in command_line_options:
+        for option in self.options:
             for name in option.names:
                 self.options_by_name[name] = option
 
     def reset_config(self):
-        self.conf = config.Config(command_line_options)
+        self.options = get_config_options()
+        self.conf = config.Config(self.options)
 
     def load_json(self, d):
         # Serialize a python dictionary to json, then load it
@@ -53,7 +46,8 @@ class TestConfig(unittest.TestCase):
             values[self.options_by_name[name].dest] = value
 
         for name, value in d.items():
-            self.options_by_name[name].apply(self.conf.config, values)
+            if value:
+                self.options_by_name[name].apply(values)
 
     def test_default(self):
         # Make sure default configuration is valid
@@ -86,22 +80,16 @@ class TestConfig(unittest.TestCase):
             'fields': ['testField1', 'testField2']
         }
         self.load_json(test_config)
-        self.assertEquals(test_config, self.conf.config)
 
-        # Test for correct nested config merging
-        test_config = {
-            'syslog': {
-                'enabled': True
-            }
-        }
-        self.load_json(test_config)
-        self.assertEquals(self.conf['syslog']['enabled'], True)
-        self.assertEquals(self.conf['syslog']['host'], "testSyslogHost")
-        self.assertEquals(self.conf['syslog']['facility'], "testSyslogFacility")
+        test_keys = [k for k in test_config.keys() if k != "syslog"]
+        for test_key in test_keys:
+            self.assertEquals(self.conf[test_key], test_config[test_key])
+
+        self.assertEquals(self.conf['syslog.enabled'], test_config['syslog']['enabled'])
+        self.assertEquals(self.conf['syslog.host'], test_config['syslog']['host'])
+        self.assertEquals(self.conf['syslog.facility'], test_config['syslog']['facility'])
 
     def test_basic_options(self):
-        default = constants.DEFAULT_CONFIG
-
         # Test the assignment of individual options
         def test_option(arg_name, json_key, value):
             self.load_options({arg_name : value})
@@ -122,19 +110,18 @@ class TestConfig(unittest.TestCase):
         test_option('--admin-username', 'adminUsername', 'testAdminUsernameLong')
         test_option('--auto-commit-interval', 'autoCommitInterval', 69)
         test_option('--continue-on-error', 'continueOnError', True)
-        test_option('-v', 'verbose', True)
-        test_option('--verbose', 'verbose', False)
         test_option('-w', 'logFile', 'testLogFileShort')
         test_option('--logfile', 'logFile', 'testLogFileLong')
+        test_option('--syslog-host', 'syslog.host', "testSyslogHost")
+        test_option('--syslog-facility', 'syslog.facility', "testSyslogFaciliy")
 
-        def test_syslog_option(arg_name, json_key, value):
-            self.load_options({arg_name : value})
-            self.assertEquals(self.conf['syslog'][json_key], value)
+        test_option('-v', 'verbose', True)
+        self.conf.get_option('verbose').value = False
+        test_option('--verbose', 'verbose', True)
 
-        test_syslog_option('-s', 'enabled', True)
-        test_syslog_option('--enable-syslog', 'enabled', False)
-        test_syslog_option('--syslog-host', 'host', 'testHost')
-        test_syslog_option('--syslog-facility', 'facility', 'testFacility')
+        test_option('-s', 'syslog.enabled', True)
+        self.conf.get_option('syslog.enabled').value = False
+        test_option('--enable-syslog', 'syslog.enabled', False)
 
         self.load_options({'-i': 'a,b,c'})
         self.assertEquals(self.conf['fields'], ['a', 'b', 'c'])
@@ -194,17 +181,17 @@ class TestConfig(unittest.TestCase):
         docManagers = [
             {
                 'docManager': 'a',
-                'targetUrl': '1'
+                'targetURL': '1'
             },
             {
                 'docManager': 'b',
-                'targetUrl': '2'
+                'targetURL': '2'
             }
         ]
         self.load_options(args)
         self.assertEquals(self.conf['docManagers'], docManagers);
 
-        del self.conf.config['docManagers'] # reset doc managers
+        self.conf.get_option('docManagers').value = None # reset doc managers
 
         # no doc_manager but target_urls
         args = {
@@ -222,17 +209,17 @@ class TestConfig(unittest.TestCase):
         docManagers = [
             {
                 'docManager': 'a',
-                'targetUrl': '1'
+                'targetURL': '1'
             },
             {
                 'docManager': 'a',
-                'targetUrl': '2'
+                'targetURL': '2'
             }
         ]
         self.load_options(args)
         self.assertEquals(self.conf['docManagers'], docManagers);
 
-        del self.conf.config['docManagers'] # reset doc managers
+        self.conf.get_option('docManagers').value = None # reset doc managers
 
         # fewer target_urls than doc_managers
         args = {
