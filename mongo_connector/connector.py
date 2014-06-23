@@ -38,11 +38,12 @@ class Connector(threading.Thread):
     """Checks the cluster for shards to tail.
     """
     def __init__(self, address, oplog_checkpoint, target_url, ns_set,
-                 u_key, auth_key, doc_manager=None, auth_username=None,
-                 collection_dump=True, batch_size=constants.DEFAULT_BATCH_SIZE,
+                 u_key, auth_key, doc_manager=None,
+                 auth_username=None, collection_dump=True,
+                 batch_size=constants.DEFAULT_BATCH_SIZE,
                  fields=None, dest_mapping={},
                  auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL,
-                 continue_on_error=False):
+                 continue_on_error=False, gridfs_set=None):
 
         if target_url and not doc_manager:
             raise errors.ConnectorError("Cannot create a Connector with a "
@@ -97,6 +98,9 @@ class Connector(threading.Thread):
 
         #The set of relevant namespaces to consider
         self.ns_set = ns_set
+
+        #The set of gridfs namespaces to consider
+        self.gridfs_set = gridfs_set
 
         #The dict of source namespace to destination namespace
         self.dest_mapping = dest_mapping
@@ -312,7 +316,8 @@ class Connector(threading.Thread):
                 batch_size=self.batch_size,
                 fields=self.fields,
                 dest_mapping=self.dest_mapping,
-                continue_on_error=self.continue_on_error
+                continue_on_error=self.continue_on_error,
+                gridfs_set=self.gridfs_set
             )
             self.shard_set[0] = oplog
             logging.info('MongoConnector: Starting connection thread %s' %
@@ -378,7 +383,8 @@ class Connector(threading.Thread):
                         batch_size=self.batch_size,
                         fields=self.fields,
                         dest_mapping=self.dest_mapping,
-                        continue_on_error=self.continue_on_error
+                        continue_on_error=self.continue_on_error,
+                        gridfs_set=self.gridfs_set
                     )
                     self.shard_set[shard_id] = oplog
                     msg = "Starting connection thread"
@@ -680,6 +686,9 @@ def main():
         ## Create a mapping of source ns to dest ns as a dict
         dest_mapping = dict(zip(ns_set, dest_ns_set))
 
+    #TODO
+    gridfs_set = ["test.test.fs"]
+
     fields = options.fields
     if fields is not None:
         fields = options.fields.split(',')
@@ -717,7 +726,8 @@ def main():
         fields=fields,
         dest_mapping=dest_mapping,
         auto_commit_interval=options.commit_interval,
-        continue_on_error=options.continue_on_error
+        continue_on_error=options.continue_on_error,
+        gridfs_set=gridfs_set
     )
     connector.start()
 
