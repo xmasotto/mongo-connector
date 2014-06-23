@@ -295,8 +295,7 @@ class DocManager(DocManagerBase):
             'literal.%s' % self.unique_key: f._id,
             'literal.ns': f.ns,
             'literal._ts': f._ts,
-            'literal.length': f.length,
-            'literal.uploadDate': f.upload_date,
+            'literal.upload_date': f.upload_date,
             'literal.md5': f.md5,
         }
 
