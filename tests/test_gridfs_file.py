@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import sys
+import time
 
 if sys.version_info[:2] == (2, 6):
     import unittest2 as unittest
@@ -55,7 +56,7 @@ class TestGridFSFile(unittest.TestCase):
     def get_file(self, id):
         doc = {
             '_id': id,
-            'ns': 'test.fs.files',
+            'ns': 'test.fs',
             '_ts': 0
         }
         return GridFSFile(self.main_connection, doc)

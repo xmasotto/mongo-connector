@@ -43,7 +43,7 @@ class Connector(threading.Thread):
                  batch_size=constants.DEFAULT_BATCH_SIZE,
                  fields=None, dest_mapping={},
                  auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL,
-                 continue_on_error=False, gridfs_set=None):
+                 continue_on_error=False, gridfs_set=[]):
 
         if target_url and not doc_manager:
             raise errors.ConnectorError("Cannot create a Connector with a "

@@ -25,6 +25,7 @@ else:
 
 sys.path[0:0] = [""]
 
+from gridfs import GridFS
 from pymongo import MongoClient
 
 from tests import solr_pair, mongo_host, STRESS_COUNT
@@ -50,6 +51,7 @@ class TestSynchronizer(unittest.TestCase):
                                replicaSet='test-solr')
         cls.solr_conn = Solr('http://%s/solr' % solr_pair)
         cls.solr_conn.delete(q='*:*')
+        #logging.getLogger().setLevel(logging.DEBUG)
 
     @classmethod
     def tearDownClass(cls):
@@ -71,18 +73,28 @@ class TestSynchronizer(unittest.TestCase):
             u_key='_id',
             auth_key=None,
             doc_manager='mongo_connector/doc_managers/solr_doc_manager.py',
-            auto_commit_interval=0
+            auto_commit_interval=0,
+            gridfs_set=['test.fs']
         )
         self.connector.start()
         assert_soon(lambda: len(self.connector.shard_set) > 0)
         retry_until_ok(self.conn.test.test.remove)
+        retry_until_ok(self.conn.test.fs.remove)
         assert_soon(lambda: sum(1 for _ in self.solr_conn.search('*:*')) == 0)
-
+            
     def tearDown(self):
         self.connector.join()
 
     def test_shard_length(self):
         """Tests the shard_length to see if the shard set was recognized
+        
+
+        id = self.fs_skipped.put(test_data, filename="test.txt")
+        assert_soon(self.fs.find()
+        
+
+        id = self.fs_skipped.put(test_data, filename="test.txt")
+        assert_soon(self.fs.find()
         """
 
         self.assertEqual(len(self.connector.shard_set), 1)
@@ -107,6 +119,40 @@ class TestSynchronizer(unittest.TestCase):
         assert_soon(lambda: sum(1 for _ in self.solr_conn.search("*:*")) == 1)
         self.conn['test']['test'].remove({'name': 'paulie'})
         assert_soon(lambda: sum(1 for _ in self.solr_conn.search("*:*")) == 0)
+
+    def test_insert_file(self):
+        """Tests inserting a gridfs file
+        """
+        fs = GridFS(self.conn['test'])
+        test_data = "test_insert_file test file"
+        id = fs.put(test_data, filename="test.txt")
+        assert_soon(lambda: sum(1 for _ in self.solr_conn.search('*:*')) > 0)
+        res = list(self.solr_conn.search('test_insert_file'))
+        self.assertEqual(len(res), 1)
+        doc = res[0]
+        self.assertEqual(doc['filename'], "test.txt")
+        self.assertEqual(doc['_id'], str(id))
+        self.assertEqual(doc['content'][0].strip(), test_data.strip())
+
+    def test_remove_file(self):
+        """Tests removing a gridfs file
+        """
+        fs = GridFS(self.conn['test'])
+        id = fs.put("test file", filename="test.txt")
+        assert_soon(lambda: sum(1 for _ in self.solr_conn.search("*:*")) == 1)
+        fs.delete(id)
+        assert_soon(lambda: sum(1 for _ in self.solr_conn.search("*:*")) == 0)
+    
+    def test_insert_file_skipped(self):
+        """Tests whether gridfs files that aren't in gridfs_set are skipped.
+        """
+        fs = GridFS(self.conn['test'], "skipped")
+        id = fs.put("skipped file", filename="skipped.txt")
+        self.conn['test']['test'].insert({'name': 'paulie'})
+        assert_soon(lambda: sum(1 for _ in self.solr_conn.search("paulie")) > 0)
+        res = list(self.solr_conn.search('*:*'))
+        self.assertEquals(len(res), 1)
+        self.assertNotEqual(res[0]['_id'], id)
 
     def test_update(self):
         """Test update operations on Solr.

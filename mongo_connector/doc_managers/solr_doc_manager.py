@@ -22,6 +22,7 @@ replace the method definitions with API calls for the desired backend.
 """
 import json
 import logging
+import os
 import re
 import urllib
 
@@ -289,7 +290,7 @@ class DocManager(DocManagerBase):
             r['_id'] = r.pop(self.unique_key)
             return r
 
-    def upsert_file(self, f):
+    def insert_file(self, f):
         params = {
             'literal.%s' % self.unique_key: f._id,
             'literal.ns': f.ns,
@@ -305,8 +306,8 @@ class DocManager(DocManagerBase):
         if self.auto_commit_interval == 0:
             params['commit'] = 'true'
 
-        request = Request("%s/update/extract?%s" %
-                          (self.url, urllib.urlencode(params)))
+        request = Request(os.path.join(self.url, 
+                     "update/extract?%s" % urllib.urlencode(params)))
 
         request.add_header("Content-type", "application/octet-stream")
         request.add_data(f)

@@ -41,7 +41,7 @@ class OplogThread(threading.Thread):
                  doc_manager, oplog_progress_dict, namespace_set, auth_key,
                  auth_username, repl_set=None, collection_dump=True,
                  batch_size=DEFAULT_BATCH_SIZE, fields=None,
-                 dest_mapping={}, continue_on_error=False, gridfs_set=None):
+                 dest_mapping={}, continue_on_error=False, gridfs_set=[]):
 
         """Initialize the oplog thread.
         """
@@ -241,7 +241,7 @@ class OplogThread(threading.Thread):
                                         entry['ts'])
                                     doc['ns'] = ns
                                     if is_gridfs_file:
-                                        docman.upsert_file(GridFSFile(
+                                        docman.insert_file(GridFSFile(
                                             self.main_connection, doc))
                                     else:
                                         docman.upsert(doc)
@@ -372,7 +372,8 @@ class OplogThread(threading.Thread):
                 else:
                     cursor = self.oplog.find(
                         {'ts': {'$gte': timestamp},
-                         'ns': {'$in': self.namespace_set}},
+                         'ns': {'$in': self.namespace_set + 
+                                self.gridfs_files_set}},
                         tailable=True, await_data=True
                     )
                 # Applying 8 as the mask to the cursor enables OplogReplay
@@ -448,7 +449,7 @@ class OplogThread(threading.Thread):
             return None
         long_ts = util.bson_ts_to_long(timestamp)
 
-        def docs_to_dump(self, dump_set):
+        def docs_to_dump(dump_set):
             for namespace in dump_set:
                 logging.info("OplogThread: dumping collection %s"
                              % namespace)
@@ -489,7 +490,7 @@ class OplogThread(threading.Thread):
         def upsert_each(dm):
             num_inserted = 0
             num_failed = 0
-            for num, doc in enumerate(self.docs_to_dump(dump_set)):
+            for num, doc in enumerate(docs_to_dump(dump_set)):
                 if num % 10000 == 0:
                     logging.debug("Upserted %d docs." % num)
                 try:
@@ -508,7 +509,7 @@ class OplogThread(threading.Thread):
 
         def upsert_all(dm):
             try:
-                dm.bulk_upsert(self.docs_to_dump(dump_set))
+                dm.bulk_upsert(docs_to_dump(dump_set))
             except Exception as e:
                 if self.continue_on_error:
                     logging.exception("OplogThread: caught exception"
@@ -533,8 +534,9 @@ class OplogThread(threading.Thread):
                     upsert_each(dm)
 
                 # Dump Gridfs files
-                for doc in self.docs_to_dump(self.gridfs_files_set):
-                    dm.upsert_file(
+                for doc in docs_to_dump(self.gridfs_files_set):
+                    doc['ns'] = doc['ns'][:-len(".files")]
+                    dm.insert_file(
                         GridFSFile(self.main_connection, doc))
 
             except:
@@ -592,7 +594,7 @@ class OplogThread(threading.Thread):
             ).limit(1)
         else:
             curr = self.oplog.find(
-                {'ns': {'$in': self.namespace_set}}
+                {'ns': {'$in': self.namespace_set + self.gridfs_files_set}}
             ).sort('$natural', pymongo.DESCENDING).limit(1)
 
         if curr.count(with_limit_and_skip=True) == 0:

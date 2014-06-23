@@ -24,6 +24,27 @@ sys.path[0:0] = [""]
 from mongo_connector.doc_managers.solr_doc_manager import DocManager
 from pysolr import Solr
 
+class MockGridFSFile:
+    def __init__(self, doc, data):
+        self._id = doc['_id']
+        self._ts = doc['_ts']
+        self.ns = doc['ns']
+        self.filename = doc['filename']
+        self.upload_date = doc['upload_date']
+        self.md5 = doc['md5']
+        self.data = data
+        self.length = len(self.data)
+        self.pos = 0
+
+    def __len__(self):
+        return self.length
+
+    def read(self, n=-1):
+        if n < 0 or self.pos + n > self.length:
+            n = self.length - self.pos
+        s = self.data[self.pos:self.pos+n]
+        self.pos += n
+        return s
 
 class SolrDocManagerTester(unittest.TestCase):
     """Test class for SolrDocManager
@@ -128,6 +149,47 @@ class SolrDocManagerTester(unittest.TestCase):
         self.SolrDoc.remove(docc)
         res = self.solr.search('*:*')
         self.assertTrue(len(res) == 0)
+
+    def test_insert_file(self):
+        """Ensure we can properly insert a file into Solr via DocManager.
+        """
+        test_data = ' '.join(str(x) for x in range(100000))
+        docc = {
+            '_id': 'test_id',
+            '_ts': 10,
+            'ns': 'test.ns',
+            'filename': 'test_filename',
+            'upload_date': 5,
+            'md5': 'test_md5'
+        }
+        self.SolrDoc.insert_file(MockGridFSFile(docc, test_data))
+        res = self.solr.search('*:*')
+        for doc in res:
+            self.assertEqual(doc['_id'], docc['_id'])
+            self.assertEqual(doc['_ts'], docc['_ts'])
+            self.assertEqual(doc['ns'], docc['ns'])
+            self.assertEqual(doc['filename'], docc['filename'])
+            self.assertEqual(doc['content'][0].strip(),
+                             test_data.strip())
+
+    def test_remove_file(self):
+        test_data = 'hello world'
+        docc = {
+            '_id': 'test_id',
+            '_ts': 10,
+            'ns': 'test.ns',
+            'filename': 'test_filename',
+            'upload_date': 5,
+            'md5': 'test_md5'
+        }
+
+        self.SolrDoc.insert_file(MockGridFSFile(docc, test_data))
+        res = self.solr.search('*:*')
+        self.assertEqual(len(res), 1)
+
+        self.SolrDoc.remove(docc)
+        res = self.solr.search('*:*')
+        self.assertEqual(len(res), 0)
 
     def test_full_search(self):
         """Query Solr for all docs via API and via DocManager's _search()

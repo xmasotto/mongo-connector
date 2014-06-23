@@ -120,8 +120,8 @@ class DocManagerBase(object):
         """(Re-)insert a document."""
         raise NotImplementedError
 
-    def upsert_file(self, f):
-        """(Re-)insert a GridFS file as a document."""
+    def insert_file(self, f):
+        """Insert a GridFS file as a document."""
         raise NotImplementedError
 
     def remove(self, doc):
