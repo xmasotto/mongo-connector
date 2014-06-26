@@ -21,15 +21,10 @@ else:
 
 from mongo_connector import config, constants, errors
 from mongo_connector.connector import get_config_options
-from mongo_connector.connector import validate_config
 
 class TestConfig(unittest.TestCase):
     def setUp(self):
         self.reset_config()
-        self.options_by_name = {}
-        for option in self.options:
-            for name in option.names:
-                self.options_by_name[name] = option
 
     def reset_config(self):
         self.options = get_config_options()
@@ -41,17 +36,15 @@ class TestConfig(unittest.TestCase):
         self.conf.load_json(text)
 
     def load_options(self, d):
-        values = {}
-        for name, value in d.items():
-            values[self.options_by_name[name].dest] = value
-
-        for name, value in d.items():
-            if value:
-                self.options_by_name[name].apply(values)
+        argv = []
+        for k, v in d.items():
+            argv.append(str(k))
+            argv.append(str(v))
+        self.conf.parse_args(argv)
 
     def test_default(self):
         # Make sure default configuration is valid
-        validate_config(self.conf)
+        self.load_options({})
 
     def test_parse_json(self):
         # Test for basic json parsing correctness
@@ -60,22 +53,23 @@ class TestConfig(unittest.TestCase):
             'oplogFile': 'testOplogFile',
             'noDump': True,
             'batchSize': 69,
-            'passwordFile': 'testPasswordFile',
-            'password': 'testPassword',
-            'adminUsername': 'testAdminUsername',
-            'continueOnError': True,
-            'verbosity': 1,
-
-            'logFile': "testLogFile",
-            'syslog': {
-                'enabled': False,
-                'host': 'testSyslogHost',
-                'facility': 'testSyslogFacility'
+            'verbosity': 3,
+            'logging': {
+                'type': 'file',
+                'filename': 'testFilename',
+                'host': 'testHost',
+                'facility': 'testFacility'
             },
-
-            'namespaceSet': ['testNamespaceSet'],
-            'destMapping': {'testMapKey': 'testMapValue'},
-            'fields': ['testField1', 'testField2']
+            'authentication': {
+                'adminUsername': 'testAdminUsername',
+                'password': 'testPassword',
+                'passwordFile': 'testPasswordFile'
+            },
+            'fields': ['testFields1', 'testField2'],
+            'namespaces': {
+                'include': ['testNamespaceSet'],
+                'destMapping': {'testMapKey': 'testMapValue'}
+            }
         }
         self.load_json(test_config)
 
@@ -83,37 +77,38 @@ class TestConfig(unittest.TestCase):
         for test_key in test_keys:
             self.assertEquals(self.conf[test_key], test_config[test_key])
 
-        self.assertEquals(self.conf['syslog.enabled'], 
-                          test_config['syslog']['enabled'])
-        self.assertEquals(self.conf['syslog.host'], 
-                          test_config['syslog']['host'])
-
     def test_basic_options(self):
         # Test the assignment of individual options
         def test_option(arg_name, json_key, value):
             self.load_options({arg_name : value})
             self.assertEquals(self.conf[json_key], value)
+            self.reset_config()
 
-        test_option('-m', 'mainAddress', 'testMainAddressShort')
-        test_option('--main', 'mainAddress', 'testMainAddressLong')
+        test_option('-m', 'mainAddress', 'testMainAddress')
         test_option('-o', 'oplogFile', 'testOplogFileShort')
-        test_option('--oplog-ts', 'oplogFile', 'testOplogFileLong')
         test_option('--batch-size', 'batchSize', 69)
-        test_option('-f', 'passwordFile', 'testPasswordFileShort')
-        test_option('--password-file', 'passwordFile', 'testPasswordFileLong')
-        test_option('-p', 'password', 'testPasswordShort')
-        test_option('--password', 'password', 'testPasswordLong')
-        test_option('-a', 'adminUsername', 'testAdminUsername1')
-        test_option('--admin-username', 'adminUsername', 'testAdminUsername2')
         test_option('--continue-on-error', 'continueOnError', True)
+        test_option('-v', 'verbosity', 1)
+
+        load_options({'-w': 'logFile'})
+        self.assertEquals(self.conf['logging'], 
+                          {'type': 'file', 'filename': 'logFile'})
+
+        load_options({'-s': 'true',
+                      '--syslog-host': 'testHost',
+                      '--syslog-facility': 'testFacility'})
+        self.assertEquals(self.conf['logging'],
+                          {'type': 'syslog',
+                           'host': 'testHost', 'facility': 'testFacility'})
+
         test_option('-w', 'logFile', 'testLogFileShort')
-        test_option('--logfile', 'logFile', 'testLogFileLong')
         test_option('--syslog-host', 'syslog.host', "testSyslogHost")
         test_option('--syslog-facility', 'syslog.facility', "testSyslogFaciliy")
 
-        test_option('-v', 'verbosity', 1)
-        self.conf.get_option('verbosity').value = 0
-        test_option('--verbose', 'verbosity', 1)
+        test_option('-a', 'authentication.adminUsername', 'testAdminUsername')
+        test_option('-f', 'authentication.passwordFile', 'testPasswordFile')
+        test_option('-p', 'authentication.password', 'testPassword')
+
 
         test_option('-s', 'syslog.enabled', True)
         self.conf.get_option('syslog.enabled').value = False
@@ -121,9 +116,6 @@ class TestConfig(unittest.TestCase):
 
         self.load_options({'-i': 'a,b,c'})
         self.assertEquals(self.conf['fields'], ['a', 'b', 'c'])
-
-        self.load_options({'--fields': 'd,e'})
-        self.assertEquals(self.conf['fields'], ['d', 'e'])
 
     def test_namespace_set(self):
         # test namespace_set and dest_namespace_set
@@ -192,7 +184,7 @@ class TestConfig(unittest.TestCase):
         self.load_options(args)
         self.assertEquals(self.conf['docManagers'], docManagers);
 
-        self.conf.get_option('docManagers').value = None # reset doc managers
+        self.reset_config()
 
         # no doc_manager but target_urls
         args = {
@@ -224,7 +216,7 @@ class TestConfig(unittest.TestCase):
         self.load_options(args)
         self.assertEquals(self.conf['docManagers'], docManagers);
 
-        self.conf.get_option('docManagers').value = None # reset doc managers
+        self.reset_config()
 
         # fewer target_urls than doc_managers
         args = {
@@ -267,7 +259,7 @@ class TestConfig(unittest.TestCase):
         }
         self.load_json(test_config)
         self.assertRaises(errors.InvalidConfiguration, 
-                          validate_config, self.conf)
+                          self.load_options, {})
 
         self.reset_config()
 
@@ -277,7 +269,7 @@ class TestConfig(unittest.TestCase):
         }
         self.load_json(test_config)
         self.assertRaises(errors.InvalidConfiguration, 
-                          validate_config, self.conf)
+                          self.load_options, {})
 
         self.reset_config()
 
@@ -287,7 +279,7 @@ class TestConfig(unittest.TestCase):
         }
         self.load_json(test_config)
         self.assertRaises(errors.InvalidConfiguration, 
-                          validate_config, self.conf)
+                          self.load_options, {})
 
         # every element of docManagers must contain a 'docManager' property
         test_config = {
@@ -299,7 +291,7 @@ class TestConfig(unittest.TestCase):
         }
         self.load_json(test_config)
         self.assertRaises(errors.InvalidConfiguration, 
-                          validate_config, self.conf)
+                          self.load_options, {})
 
         # auto commit interval can't be negative
         test_config = {
@@ -312,4 +304,4 @@ class TestConfig(unittest.TestCase):
         }
         self.load_json(test_config)
         self.assertRaises(errors.InvalidConfiguration, 
-                          validate_config, self.conf)
+                          self.load_options, {})

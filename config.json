@@ -1,32 +1,45 @@
 {
+    "__comment__": "Configuration options starting with '__' are disabled"
+    "__comment__": "To enable them, remove the preceding '__'"
+
     "mainAddress": "localhost:27017",
     "oplogFile": "oplog.timestamp",
     "noDump": false,
     "batchSize": -1,
     "verbosity": 0,
 
-    "logFile": "mongo-connector.log",
-    "syslog": {
-	"enabled": false,
-	"host": "localhost:514"
+    "__logging": {
+	"type": "file",
+	"filename": "mongo-connector.log",
+
+	"__type": "syslog",
+	"__host": "localhost:514",
+	"__facility": "user"
     },
 
-    "__comment__": "To modify the settings below, remove the preceding '__'",
+    "__authentication": {
+	"adminUsername": "username",
 
-    "__adminUsername": "username",
-    "__password": "password",
-    "__passwordFile": "passwordFile",
+	"password": "password",
+	"__passwordFile": "passwordFile"
+    },
 
     "__fields": ["field1", "field2", "field3"],
-    "__namespaceSet": ["db.source1", "db.source2"],
-    "__destMapping": {"db.source1": "db.dest1", "db.source2": "db.dest2"},
+
+    "__namespaces": {
+	"include": ["db.source1", "db.source2"],
+	"map": {
+	    "db.source1": "db.dest1",
+	    "db.source2": "db.dest2"
+	}
+    },
 
     "docManagers": [
-	{
-	    "docManager": "mongo_connector/doc_managers/elastic_doc_manager.py",
-	    "targetURL": "localhost:9200",
-	    "uniqueKey": "_id",
-	    "autoCommitInterval": null
-	}
+        {
+            "docManager": "mongo_connector/doc_managers/elastic_doc_manager.py",
+            "targetURL": "localhost:9200",
+            "uniqueKey": "_id",
+            "autoCommitInterval": null
+        }
     ]
 }
