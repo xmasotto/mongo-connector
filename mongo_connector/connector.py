@@ -650,11 +650,12 @@ def get_config_options():
         auto_commit_interval = cli_values['auto_commit_interval'] \
                           or constants.DEFAULT_COMMIT_INTERVAL
 
-        if cli_values['doc_managers'] is None:
+        if cli_values['doc_managers'] == None:
             if cli_values['target_urls']:
                 raise errors.InvalidConfiguration(
                     "Cannot create a Connector with a target URL"
                     " but no doc manager!")
+
         else:
             if option.value:
                 raise errors.InvalidConfiguration(

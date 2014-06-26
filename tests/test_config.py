@@ -90,29 +90,16 @@ class TestConfig(unittest.TestCase):
         test_option('--continue-on-error', 'continueOnError', True)
         test_option('-v', 'verbosity', 1)
 
-        load_options({'-w': 'logFile'})
-        self.assertEquals(self.conf['logging'], 
-                          {'type': 'file', 'filename': 'logFile'})
+        self.load_options({'-w': 'logFile'})
+        self.assertEquals(self.conf['logging.type'], 'file')
+        self.assertEquals(self.conf['logging.filename'], 'logFile')
 
-        load_options({'-s': 'true',
+        self.load_options({'-s': 'true',
                       '--syslog-host': 'testHost',
                       '--syslog-facility': 'testFacility'})
-        self.assertEquals(self.conf['logging'],
-                          {'type': 'syslog',
-                           'host': 'testHost', 'facility': 'testFacility'})
-
-        test_option('-w', 'logFile', 'testLogFileShort')
-        test_option('--syslog-host', 'syslog.host', "testSyslogHost")
-        test_option('--syslog-facility', 'syslog.facility', "testSyslogFaciliy")
-
-        test_option('-a', 'authentication.adminUsername', 'testAdminUsername')
-        test_option('-f', 'authentication.passwordFile', 'testPasswordFile')
-        test_option('-p', 'authentication.password', 'testPassword')
-
-
-        test_option('-s', 'syslog.enabled', True)
-        self.conf.get_option('syslog.enabled').value = False
-        test_option('--enable-syslog', 'syslog.enabled', False)
+        self.assertEquals(self.conf['logging.type'], 'syslog')
+        self.assertEquals(self.conf['logging.host'], 'testHost')
+        self.assertEquals(self.conf['logging.facility'], 'testFacility')
 
         self.load_options({'-i': 'a,b,c'})
         self.assertEquals(self.conf['fields'], ['a', 'b', 'c'])
@@ -123,9 +110,9 @@ class TestConfig(unittest.TestCase):
             "-n": "source_ns_1,source_ns_2,source_ns_3",
             "-g": "dest_ns_1,dest_ns_2,dest_ns_3"
         })
-        self.assertEquals(self.conf['namespaceSet'],
+        self.assertEquals(self.conf['namespaces.include'],
                           ['source_ns_1', 'source_ns_2', 'source_ns_3'])
-        self.assertEquals(self.conf['destMapping'],
+        self.assertEquals(self.conf['namespaces.map'],
                           {'source_ns_1': 'dest_ns_1',
                            'source_ns_2': 'dest_ns_2',
                            'source_ns_3': 'dest_ns_3'})
@@ -188,11 +175,12 @@ class TestConfig(unittest.TestCase):
 
         # no doc_manager but target_urls
         args = {
-            "-d": None,
             "-t": "1,2"
         }
         self.assertRaises(errors.InvalidConfiguration,
                           self.load_options, args)
+
+        self.reset_config()
 
         # fewer doc_managers than target_urls
         args = {
@@ -251,27 +239,24 @@ class TestConfig(unittest.TestCase):
 
     def test_config_validation(self):
         # can't log both to syslog and to logfile
-        test_config = {
-            'logFile': 'testLogFile',
-            'syslog': {
-                'enabled': True
-            }
-        }
-        self.load_json(test_config)
-        self.assertRaises(errors.InvalidConfiguration, 
-                          self.load_options, {})
-
-        self.reset_config()
+        self.assertRaises(errors.InvalidConfiguration,
+                          self.load_options, {
+                              '-w': 'logFile', '-s': 'true'
+                          })
 
         # can't specify a username without a password
-        test_config = {
-            'adminUsername': 'testUsername'
-        }
-        self.load_json(test_config)
-        self.assertRaises(errors.InvalidConfiguration, 
-                          self.load_options, {})
+        self.assertRaises(errors.InvalidConfiguration,
+                          self.load_options, {
+                              '-a': 'username'
+                          })
 
-        self.reset_config()
+        # can't specify password and password file
+        self.assertRaises(errors.InvalidConfiguration,
+                          self.load_options, {
+                              '-a': 'username',
+                              '-p': 'password',
+                              '-f': 'password_file'
+                          })
 
         # docManagers must be a list
         test_config = {
