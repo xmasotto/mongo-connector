@@ -20,23 +20,19 @@ import sys
 from mongo_connector import compat, constants, errors
 from mongo_connector.compat import reraise
 
-# assign the first element of cli_values to option.value
 def default_apply_function(option, cli_values):
-    try:
-        key = next(iter(cli_values))
-        value = cli_values[key]
-        if value is not None:
-            option.value = value
-    except StopIteration:
-        pass
+    first_value = list(cli_values.values())[0]
+    if first_value is not None:
+        option.value = first_value
 
 class Option(object):
     def __init__(self, config_key=None, default=None,
                  apply_function=default_apply_function):
         self.config_key = config_key
-        self.apply_function = apply_function
         self.value = default
-        self.names = []
+        self.apply_function = apply_function
+
+        self.cli_names = []
         self.cli_options = []
         self.option_type = None
         self.validate_type = lambda x:True
@@ -64,7 +60,7 @@ class Config(object):
         for option in self.options:
             for args, kwargs in option.cli_options:
                 cli_option = parser.add_option(*args, **kwargs)
-                option.names.append(cli_option.dest)
+                option.cli_names.append(cli_option.dest)
         parsed_options, args = parser.parse_args(argv)
 
         # load the config file
@@ -72,18 +68,15 @@ class Config(object):
             try:
                 with open(parsed_options.config_file) as f:
                     self.load_json(f.read())
-            except (OSError, IOError, ValueError) as e:
-                print(sys.exc_info()[0])
+            except (OSError, IOError, ValueError):
                 reraise(errors.InvalidConfiguration, *sys.exc_info()[1:])
 
         # apply the command line arguments
         values = parsed_options.__dict__
         for option in self.options:
             option.apply_function(
-                option, dict((k, values.get(k)) for k in option.names))
+                option, dict((k, values.get(k)) for k in option.cli_names))
 
-    # self['nested.key'] does repeated dictionary lookups
-    # returns None if the given key is invalid
     def __getitem__(self, key):
         keys = key.split('.')
         cur = self.config_key_to_option[keys[0]].value
@@ -100,7 +93,14 @@ class Config(object):
         for k in parsed_config:
             option = self.config_key_to_option.get(k)
             if option:
-                option.value = parsed_config[k]
+                # load into option.value
+                if isinstance(parsed_config[k], dict):
+                    for k2 in parsed_config[k]:
+                        option.value[k2] = parsed_config[k][k2]
+                else:
+                    option.value = parsed_config[k]
+
+                # type check
                 if not option.validate_type(option.value):
                     raise errors.InvalidConfiguration(
                         "%s should have %r, %r was given!" %

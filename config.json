@@ -9,26 +9,25 @@
     "verbosity": 0,
     "continueOnError": true,
 
-    "__logging": {
-	"type": "file",
-	"filename": "mongo-connector.log",
+    "logging": {
+	"__type": "file",
+	"__filename": "mongo-connector.log",
 
-	"__type": "syslog",
-	"__host": "localhost:514",
-	"__facility": "user"
+	"type": "syslog",
+	"host": "localhost:512"
     },
 
-    "__authentication": {
-	"adminUsername": "username",
-	"password": "password",
-	"passwordFile": null
+    "authentication": {
+	"__adminUsername": "username",
+	"__password": "password",
+	"__passwordFile": null
     },
 
     "__fields": ["field1", "field2", "field3"],
 
-    "__namespaces": {
-	"include": ["db.source1", "db.source2"],
-	"mapping": {
+    "namespaces": {
+	"__include": ["db.source1", "db.source2"],
+	"__mapping": {
 	    "db.source1": "db.dest1",
 	    "db.source2": "db.dest2"
 	}
@@ -38,8 +37,8 @@
         {
             "docManager": "mongo_connector/doc_managers/elastic_doc_manager.py",
             "targetURL": "localhost:9200",
-            "uniqueKey": "_id",
-            "autoCommitInterval": null
+            "__uniqueKey": "_id",
+            "__autoCommitInterval": null
         }
     ]
 }

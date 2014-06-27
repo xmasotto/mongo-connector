@@ -142,12 +142,12 @@ class Connector(threading.Thread):
 
                     # assign unique_key and auto_commit_interval
                     # per document manager
-                    if type(u_key) is list:
+                    if isinstance(u_key, list):
                         docman_kwargs['unique_key'] = u_key[i]
                     else:
                         docman_kwargs['unique_key'] = u_key
 
-                    if type(auto_commit_interval) is list:
+                    if isinstance(auto_commit_interval, list):
                         docman_kwargs[
                             'auto_commit_interval'] = auto_commit_interval[i]
                     else:
@@ -418,35 +418,35 @@ def get_config_options():
 
     #-m is for the main address, which is a host:port pair, ideally of the
     #mongos. For non sharded clusters, it can be the primary.
-    main_address = add_option("mainAddress", default="localhost:27017")
+    main_address = add_option("mainAddress", "localhost:27017")
     main_address.set_type(str)
     main_address.add_cli("-m", "--main", dest="main_address", help=
-                """Specify the main address, which is a"""
-                """ host:port pair. For sharded clusters, this"""
-                """ should be the mongos address. For individual"""
-                """ replica sets, supply the address of the"""
-                """ primary. For example, `-m localhost:27217`"""
-                """ would be a valid argument to `-m`. Don't use"""
-                """ quotes around the address.""")
+                "Specify the main address, which is a"
+                " host:port pair. For sharded clusters, this"
+                " should be the mongos address. For individual"
+                " replica sets, supply the address of the"
+                " primary. For example, `-m localhost:27217`"
+                " would be a valid argument to `-m`. Don't use"
+                " quotes around the address.")
 
     #-o is to specify the oplog-config file. This file is used by the system
     #to store the last timestamp read on a specific oplog. This allows for
     #quick recovery from failure.
-    oplog_file = add_option("oplogFile", default="oplog.timestamp")
+    oplog_file = add_option("oplogFile", "oplog.timestamp")
     oplog_file.set_type(str)
     oplog_file.add_cli("-o", "--oplog-ts", dest="oplog_file", help=
-                """Specify the name of the file that stores the """
-                """oplog progress timestamps. """
-                """This file is used by the system to store the last """
-                """timestamp read on a specific oplog. This allows """
-                """for quick recovery from failure. By default this """
-                """is `config.txt`, which starts off empty. An empty """
-                """file causes the system to go through all the mongo """
-                """oplog and sync all the documents. Whenever the """
-                """cluster is restarted, it is essential that the """
-                """oplog-timestamp config file be emptied - otherwise """
-                """the connector will miss some documents and behave """
-                """incorrectly.""")
+                "Specify the name of the file that stores the "
+                "oplog progress timestamps. "
+                "This file is used by the system to store the last "
+                "timestamp read on a specific oplog. This allows "
+                "for quick recovery from failure. By default this "
+                "is `config.txt`, which starts off empty. An empty "
+                "file causes the system to go through all the mongo "
+                "oplog and sync all the documents. Whenever the "
+                "cluster is restarted, it is essential that the "
+                "oplog-timestamp config file be emptied - otherwise "
+                "the connector will miss some documents and behave "
+                "incorrectly.")
 
     #--no-dump specifies whether we should read an entire collection from
     #scratch if no timestamp is found in the oplog_config.
@@ -459,7 +459,7 @@ def get_config_options():
 
     #--batch-size specifies num docs to read from oplog before updating the
     #--oplog-ts config file with current oplog position
-    batch_size = add_option("batchSize", default=constants.DEFAULT_BATCH_SIZE)
+    batch_size = add_option("batchSize", constants.DEFAULT_BATCH_SIZE)
     batch_size.set_type(int)
     batch_size.add_cli("--batch-size", type="int", dest="batch_size", help=
                 "Specify an int to update the --oplog-ts "
@@ -473,10 +473,10 @@ def get_config_options():
         if cli_values['verbose']:
             option.value = 1
         if option.value < 0:
-            raise errors.InvalidConfiguration("Verbosity gotta be positive!")
+            raise errors.InvalidConfiguration("verbosity must be non-negative.")
 
     #-v enables verbose logging
-    verbosity = add_option("verbosity", default=0, apply_function=apply_verbosity)
+    verbosity = add_option("verbosity", 0, apply_verbosity)
     verbosity.set_type(int)
     verbosity.add_cli("-v", "--verbose", action="store_true",
                dest="verbose", help=
@@ -494,16 +494,19 @@ def get_config_options():
             
         if cli_values['enable_syslog']:
             option.value['type'] = 'syslog'
-            option.value['host'] = 'localhost:514'
-            option.value['facility'] = 'user'
 
         if cli_values['syslog_host']:
             option.value['host'] = cli_values['syslog_host']
 
         if cli_values['syslog_facility']:
             option.value['facility'] = cli_values['syslog_facility']
+            
+    default_logging = {
+        'host': constants.DEFAULT_SYSLOG_HOST,
+        'facility': constants.DEFAULT_SYSLOG_FACILITY
+    }
 
-    logging = add_option("logging", {}, apply_logging)
+    logging = add_option("logging", default_logging, apply_logging)
     logging.set_type(dict)
     
     #-w enable logging to a file
@@ -514,18 +517,18 @@ def get_config_options():
     #-s is to enable syslog logging.
     logging.add_cli("-s", "--enable-syslog", action="store_true",
                dest="enable_syslog", help=
-               """Used to enable logging to syslog."""
-               """ Use -l to specify syslog host.""")
+               "Used to enable logging to syslog."
+               " Use -l to specify syslog host.")
 
     #--syslog-host is to specify the syslog host.
     logging.add_cli("--syslog-host", dest="syslog_host", help=
-               """Used to specify the syslog host."""
-               """ The default is 'localhost:514'""")
+               "Used to specify the syslog host."
+               " The default is 'localhost:514'")
 
     #--syslog-facility is to specify the syslog facility.
     logging.add_cli("--syslog-facility", dest="syslog_facility", help=
-               """Used to specify the syslog facility."""
-               """ The default is 'user'""")
+               "Used to specify the syslog facility."
+               " The default is 'user'")
 
     def apply_authentication(option, cli_values):
         if cli_values['admin_username']:
@@ -542,10 +545,10 @@ def get_config_options():
             passwordFile = option.value.get("passwordFile")
             if not password and not passwordFile:
                 raise errors.InvalidConfiguration(
-                    "Admin username specified without password!")
+                    "Admin username specified without password.")
             if password and passwordFile:
                 raise errors.InvalidConfiguration(
-                    "Can't specify both password and password file!")
+                    "Can't specify both password and password file.")
 
     default_authentication = {
         'adminUsername': None,
@@ -560,29 +563,29 @@ def get_config_options():
     #-a is to specify the username for authentication.
     authentication.add_cli(
         "-a", "--admin-username", dest="admin_username", help=
-        """Used to specify the username of an admin user to """
-        """authenticate with. To use authentication, the user """
-        """must specify both an admin username and a keyFile.""")
+        "Used to specify the username of an admin user to "
+        "authenticate with. To use authentication, the user "
+        "must specify both an admin username and a keyFile.")
 
     #-p is to specify the password used for authentication.
     authentication.add_cli(
         "-p", "--password", dest="password", help=
-        """Used to specify the password."""
-        """ This is used by mongos to authenticate"""
-        """ connections to the shards, and in the"""
-        """ oplog threads. If authentication is not used, then"""
-        """ this field can be left empty as the default """)
+        "Used to specify the password."
+        " This is used by mongos to authenticate"
+        " connections to the shards, and in the"
+        " oplog threads. If authentication is not used, then"
+        " this field can be left empty as the default ")
 
     #-f is to specify the authentication key file. This file is used by mongos
     #to authenticate connections to the shards, and we'll use it in the oplog
     #threads.
     authentication.add_cli(
         "-f", "--password-file", dest="password_file", help=
-        """Used to store the password for authentication."""
-        """ Use this option if you wish to specify a"""
-        """ username and password but don't want to"""
-        """ type in the password. The contents of this"""
-        """ file should be the password for the admin user.""")
+        "Used to store the password for authentication."
+        " Use this option if you wish to specify a"
+        " username and password but don't want to"
+        " type in the password. The contents of this"
+        " file should be the password for the admin user.")
 
     def apply_fields(option, cli_values):
         if cli_values['fields']:
@@ -593,18 +596,18 @@ def get_config_options():
 
     #-i to specify the list of fields to export
     fields.add_cli("-i", "--fields", dest="fields", help=
-               """Used to specify the list of fields to export. """
-               """Specify a field or fields to include in the export. """
-               """Use a comma separated list of fields to specify multiple """
-               """fields. The '_id', 'ns' and '_ts' fields are always """
-               """exported.""")
+               "Used to specify the list of fields to export. "
+               "Specify a field or fields to include in the export. "
+               "Use a comma separated list of fields to specify multiple "
+               "fields. The '_id', 'ns' and '_ts' fields are always "
+               "exported.")
 
     def apply_namespaces(option, cli_values):
         if cli_values['ns_set']:
             ns_set = cli_values['ns_set'].split(',')
             if len(ns_set) != len(set(ns_set)):
                 raise errors.InvalidConfiguration(
-                    "Namespace set should not contain any duplicates!")
+                    "Namespace set should not contain any duplicates.")
             option.value['include'] = ns_set
 
         if cli_values['dest_ns_set']:
@@ -613,11 +616,11 @@ def get_config_options():
             if len(dest_ns_set) != len(set(dest_ns_set)):
                 raise errors.InvalidConfiguration(
                     "Destination namespace set should not"
-                    " contain any duplicates!")
+                    " contain any duplicates.")
             if len(ns_set) != len(dest_ns_set):
                 raise errors.InvalidConfiguration(
                     "Destination namespace set should be the"
-                    " same length as the origin namespace set")
+                    " same length as the origin namespace set.")
             option.value['mapping'] = dict(zip(ns_set, dest_ns_set))
 
     default_namespaces = {
@@ -632,37 +635,36 @@ def get_config_options():
     #considers all the namespaces
     namespaces.add_cli(
         "-n", "--namespace-set", dest="ns_set", help=
-        """Used to specify the namespaces we want to """
-        """consider. For example, if we wished to store all """
-        """documents from the test.test and alpha.foo """
-        """namespaces, we could use `-n test.test,alpha.foo`. """
-        """The default is to consider all the namespaces, """
-        """excluding the system and config databases, and """
-        """also ignoring the "system.indexes" collection in """
-        """any database.""")
+        "Used to specify the namespaces we want to "
+        "consider. For example, if we wished to store all "
+        "documents from the test.test and alpha.foo "
+        "namespaces, we could use `-n test.test,alpha.foo`. "
+        "The default is to consider all the namespaces, "
+        "excluding the system and config databases, and "
+        "also ignoring the \"system.indexes\" collection in "
+        "any database.")
 
+    #-g is the destination namespace
     namespaces.add_cli(
         "-g", "--dest-namespace-set", dest="dest_ns_set", help=
-        """Specify a destination namespace mapping. Each """
-        """namespace provided in the --namespace-set option """
-        """will be mapped respectively according to this """
-        """comma-separated list. These lists must have """
-        """equal length. The default is to use the identity """
-        """mapping. This is currently only implemented """
-        """for mongo-to-mongo connections.""")
+        "Specify a destination namespace mapping. Each "
+        "namespace provided in the --namespace-set option "
+        "will be mapped respectively according to this "
+        "comma-separated list. These lists must have "
+        "equal length. The default is to use the identity "
+        "mapping. This is currently only implemented "
+        "for mongo-to-mongo connections.")
 
-
-    #-d is to specify the doc manager file.
     def apply_doc_managers(option, cli_values):
-        unique_key = cli_values['unique_key'] or '_id'
-        auto_commit_interval = cli_values['auto_commit_interval'] \
-                          or constants.DEFAULT_COMMIT_INTERVAL
+        unique_key = cli_values['unique_key'] or constants.DEFAULT_UNIQUE_KEY
+        auto_commit_interval = (cli_values['auto_commit_interval'] 
+                                or constants.DEFAULT_COMMIT_INTERVAL)
 
         if cli_values['doc_managers'] == None:
             if cli_values['target_urls']:
                 raise errors.InvalidConfiguration(
                     "Cannot create a Connector with a target URL"
-                    " but no doc manager!")
+                    " but no doc manager.")
 
         else:
             if option.value:
@@ -698,7 +700,7 @@ def get_config_options():
             for dm in option.value:
                 if not isinstance(dm, dict):
                     raise errors.InvalidConfiguration(
-                        "elements of docManagers must be a dict.")
+                        "Elements of docManagers must be a dict.")
                 if 'docManager' not in dm:
                     raise errors.InvalidConfiguration(
                         "Every element of docManagers"
@@ -712,69 +714,72 @@ def get_config_options():
 
                 if dm['autoCommitInterval'] and dm['autoCommitInterval'] < 0:
                     raise errors.InvalidConfiguration(
-                        "autoCommitInterval must be non-negative")
+                        "autoCommitInterval must be non-negative.")
 
     doc_managers = add_option("docManagers", None, apply_doc_managers)
     doc_managers.set_type(list)
+
+    #-d is to specify the doc manager file.
     doc_managers.add_cli(
         "-d", "--docManager", "--doc-managers", dest="doc_managers", help=
-        """Used to specify the path to each doc manager """
-        """file that will be used. DocManagers should be """
-        """specified in the same order as their respective """
-        """target addresses in the --target-urls option. """
-        """URLs are assigned to doc managers """
-        """respectively. Additional doc managers are """
-        """implied to have no target URL. Additional URLs """
-        """are implied to have the same doc manager type as """
-        """the last doc manager for which a URL was """
-        """specified. By default, Mongo Connector will use """
-        """'doc_manager_simulator.py'.  It is recommended """
-        """that all doc manager files be kept in the """
-        """doc_managers folder in mongo-connector. For """
-        """more information about making your own doc """
-        """manager, see 'Writing Your Own DocManager' """
-        """section of the wiki""")
+        "Used to specify the path to each doc manager "
+        "file that will be used. DocManagers should be "
+        "specified in the same order as their respective "
+        "target addresses in the --target-urls option. "
+        "URLs are assigned to doc managers "
+        "respectively. Additional doc managers are "
+        "implied to have no target URL. Additional URLs "
+        "are implied to have the same doc manager type as "
+        "the last doc manager for which a URL was "
+        "specified. By default, Mongo Connector will use "
+        "'doc_manager_simulator.py'.  It is recommended "
+        "that all doc manager files be kept in the "
+        "doc_managers folder in mongo-connector. For "
+        "more information about making your own doc "
+        "manager, see 'Writing Your Own DocManager' "
+        "section of the wiki")
 
+    #-d is to specify the doc manager file.
     doc_managers.add_cli(
         "-t", "--target-url", "--target-urls",
         dest="target_urls", help=
-        """Specify the URL to each target system being """
-        """used. For example, if you were using Solr out of """
-        """the box, you could use '-t """
-        """http://localhost:8080/solr' with the """
-        """SolrDocManager to establish a proper connection. """
-        """URLs should be specified in the same order as """
-        """their respective doc managers in the """
-        """--doc-managers option.  URLs are assigned to doc """
-        """managers respectively. Additional doc managers """
-        """are implied to have no target URL. Additional """
-        """URLs are implied to have the same doc manager """
-        """type as the last doc manager for which a URL was """
-        """specified. """
-        """Don't use quotes around addresses. """)
+        "Specify the URL to each target system being "
+        "used. For example, if you were using Solr out of "
+        "the box, you could use '-t "
+        "http://localhost:8080/solr' with the "
+        "SolrDocManager to establish a proper connection. "
+        "URLs should be specified in the same order as "
+        "their respective doc managers in the "
+        "--doc-managers option.  URLs are assigned to doc "
+        "managers respectively. Additional doc managers "
+        "are implied to have no target URL. Additional "
+        "URLs are implied to have the same doc manager "
+        "type as the last doc manager for which a URL was "
+        "specified. "
+        "Don't use quotes around addresses. ")
 
     #-u is to specify the mongoDB field that will serve as the unique key
     #for the target system,
     doc_managers.add_cli(
         "-u", "--unique-key", dest="unique_key", help=
-        """The name of the MongoDB field that will serve """
-        """as the unique key for the target system. """
-        """Note that this option does not apply """
-        """when targeting another MongoDB cluster. """
-        """Defaults to "_id".""")
+        "The name of the MongoDB field that will serve "
+        "as the unique key for the target system. "
+        "Note that this option does not apply "
+        "when targeting another MongoDB cluster. "
+        "Defaults to \"_id\".")
 
     #--auto-commit-interval to specify auto commit time interval
     doc_managers.add_cli(
         "--auto-commit-interval", type="int",
         dest="auto_commit_interval", help=
-        """Seconds in-between calls for the Doc Manager"""
-        """ to commit changes to the target system. A value of"""
-        """ 0 means to commit after every write operation."""
-        """ When left unset, Mongo Connector will not make"""
-        """ explicit commits. Some systems have"""
-        """ their own mechanism for adjusting a commit"""
-        """ interval, which should be preferred to this"""
-        """ option.""")
+        "Seconds in-between calls for the Doc Manager"
+        " to commit changes to the target system. A value of"
+        " 0 means to commit after every write operation."
+        " When left unset, Mongo Connector will not make"
+        " explicit commits. Some systems have"
+        " their own mechanism for adjusting a commit"
+        " interval, which should be preferred to this"
+        " option.")
 
     #--continue-on-error to continue to upsert documents during a collection
     #dump, even if the documents cannot be inserted for some reason
@@ -807,10 +812,23 @@ def main():
     conf = config.Config(get_config_options())
     conf.parse_args()
 
+    def filter_dunder_keys(x):
+        if isinstance(x, list):
+            return [filter_dunder_keys(c) for c in x]
+        elif isinstance(x, dict):
+            result = {}
+            for k in x:
+                if not k.startswith('__'):
+                    result[k] = filter_dunder_keys(x[k])
+            return result
+        else:
+            return x
+
     print("Loading Mongo Connector with the following configuration:")
     pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(dict(
-        (opt.config_key, opt.value) for opt in conf.options if opt.config_key))
+    config_dict = dict(
+        (opt.config_key, opt.value) for opt in conf.options if opt.config_key)
+    pp.pprint(filter_dunder_keys(config_dict))
     print("")
 
     logger = logging.getLogger()
@@ -851,8 +869,8 @@ def main():
     else:
         doc_managers = []
         target_urls = []
-        unique_keys = None
-        auto_commit_intervals=None
+        unique_keys = constants.DEFAULT_UNIQUE_KEY
+        auto_commit_intervals = constants.DEFAULT_COMMIT_INTERVAL
 
     if len(doc_managers) == 0:
         logger.info('No doc managers specified, using simulator.')

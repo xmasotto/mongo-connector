@@ -70,14 +70,44 @@ class TestConfig(unittest.TestCase):
             'fields': ['testFields1', 'testField2'],
             'namespaces': {
                 'include': ['testNamespaceSet'],
-                'map': {'testMapKey': 'testMapValue'}
+                'mapping': {'testMapKey': 'testMapValue'}
             }
         }
         self.load_json(test_config, validate=False)
 
-        test_keys = [k for k in test_config.keys() if k != "syslog"]
-        for test_key in test_keys:
+        for test_key in test_config.keys():
             self.assertEqual(self.conf[test_key], test_config[test_key])
+
+        # Test for partial dict updates
+        test_config = {
+            'logging': {
+                'type': 'syslog',
+                'host': 'testHost2'
+            },
+            'authentication': {
+                'adminUsername': 'testAdminUsername2',
+                'passwordFile': 'testPasswordFile2'
+            },
+            'namespaces': {
+                'mapping': {}
+            }
+        }
+        self.load_json(test_config, validate=False)
+        self.assertEqual(self.conf['logging'], {
+            'type': 'syslog',
+            'filename': 'testFilename',
+            'host': 'testHost2',
+            'facility': 'testFacility'
+        })
+        self.assertEqual(self.conf['authentication'], {
+            'adminUsername': 'testAdminUsername2',
+            'password': 'testPassword',
+            'passwordFile': 'testPasswordFile2'
+        })
+        self.assertEqual(self.conf['namespaces'], {
+            'include': ['testNamespaceSet'],
+            'mapping': {}
+        })
 
     def test_basic_options(self):
         # Test the assignment of individual options
@@ -268,7 +298,8 @@ class TestConfig(unittest.TestCase):
         test_config = {
             'docManagers': "hello"
         }
-        self.assertRaises(errors.InvalidConfiguration, self.load_json, test_config)
+        self.assertRaises(errors.InvalidConfiguration, 
+                          self.load_json, test_config)
 
         # every element of docManagers must contain a 'docManager' property
         test_config = {
@@ -278,7 +309,8 @@ class TestConfig(unittest.TestCase):
                 }
             ]
         }
-        self.assertRaises(errors.InvalidConfiguration, self.load_json, test_config)
+        self.assertRaises(errors.InvalidConfiguration, 
+                          self.load_json, test_config)
 
         # auto commit interval can't be negative
         test_config = {
@@ -289,4 +321,5 @@ class TestConfig(unittest.TestCase):
                 }
             ]
         }
-        self.assertRaises(errors.InvalidConfiguration, self.load_json, test_config)
+        self.assertRaises(errors.InvalidConfiguration, 
+                          self.load_json, test_config)

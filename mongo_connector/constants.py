@@ -28,3 +28,7 @@ DEFAULT_MAX_BULK = 500
 # The default MongoDB field that will serve as the unique key for the 
 # target system.
 DEFAULT_UNIQUE_KEY="_id"
+
+# Default host and facility for logging to the syslog.
+DEFAULT_SYSLOG_HOST="localhost:512"
+DEFAULT_SYSLOG_FACILITY="user"
