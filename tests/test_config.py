@@ -30,12 +30,14 @@ class TestConfig(unittest.TestCase):
         self.options = get_config_options()
         self.conf = config.Config(self.options)
 
-    def load_json(self, d):
+    def load_json(self, d, validate=True):
         # Serialize a python dictionary to json, then load it
         text = json.dumps(d)
         self.conf.load_json(text)
+        if validate:
+            self.load_options()
 
-    def load_options(self, d):
+    def load_options(self, d={}):
         argv = []
         for k, v in d.items():
             argv.append(str(k))
@@ -68,20 +70,20 @@ class TestConfig(unittest.TestCase):
             'fields': ['testFields1', 'testField2'],
             'namespaces': {
                 'include': ['testNamespaceSet'],
-                'destMapping': {'testMapKey': 'testMapValue'}
+                'map': {'testMapKey': 'testMapValue'}
             }
         }
-        self.load_json(test_config)
+        self.load_json(test_config, validate=False)
 
         test_keys = [k for k in test_config.keys() if k != "syslog"]
         for test_key in test_keys:
-            self.assertEquals(self.conf[test_key], test_config[test_key])
+            self.assertEqual(self.conf[test_key], test_config[test_key])
 
     def test_basic_options(self):
         # Test the assignment of individual options
         def test_option(arg_name, json_key, value):
             self.load_options({arg_name : value})
-            self.assertEquals(self.conf[json_key], value)
+            self.assertEqual(self.conf[json_key], value)
             self.reset_config()
 
         test_option('-m', 'mainAddress', 'testMainAddress')
@@ -91,18 +93,18 @@ class TestConfig(unittest.TestCase):
         test_option('-v', 'verbosity', 1)
 
         self.load_options({'-w': 'logFile'})
-        self.assertEquals(self.conf['logging.type'], 'file')
-        self.assertEquals(self.conf['logging.filename'], 'logFile')
+        self.assertEqual(self.conf['logging.type'], 'file')
+        self.assertEqual(self.conf['logging.filename'], 'logFile')
 
         self.load_options({'-s': 'true',
                       '--syslog-host': 'testHost',
                       '--syslog-facility': 'testFacility'})
-        self.assertEquals(self.conf['logging.type'], 'syslog')
-        self.assertEquals(self.conf['logging.host'], 'testHost')
-        self.assertEquals(self.conf['logging.facility'], 'testFacility')
+        self.assertEqual(self.conf['logging.type'], 'syslog')
+        self.assertEqual(self.conf['logging.host'], 'testHost')
+        self.assertEqual(self.conf['logging.facility'], 'testFacility')
 
         self.load_options({'-i': 'a,b,c'})
-        self.assertEquals(self.conf['fields'], ['a', 'b', 'c'])
+        self.assertEqual(self.conf['fields'], ['a', 'b', 'c'])
 
     def test_namespace_set(self):
         # test namespace_set and dest_namespace_set
@@ -110,9 +112,9 @@ class TestConfig(unittest.TestCase):
             "-n": "source_ns_1,source_ns_2,source_ns_3",
             "-g": "dest_ns_1,dest_ns_2,dest_ns_3"
         })
-        self.assertEquals(self.conf['namespaces.include'],
+        self.assertEqual(self.conf['namespaces.include'],
                           ['source_ns_1', 'source_ns_2', 'source_ns_3'])
-        self.assertEquals(self.conf['namespaces.map'],
+        self.assertEqual(self.conf['namespaces.mapping'],
                           {'source_ns_1': 'dest_ns_1',
                            'source_ns_2': 'dest_ns_2',
                            'source_ns_3': 'dest_ns_3'})
@@ -169,7 +171,7 @@ class TestConfig(unittest.TestCase):
             }
         ]
         self.load_options(args)
-        self.assertEquals(self.conf['docManagers'], docManagers);
+        self.assertEqual(self.conf['docManagers'], docManagers);
 
         self.reset_config()
 
@@ -202,7 +204,7 @@ class TestConfig(unittest.TestCase):
             }
         ]
         self.load_options(args)
-        self.assertEquals(self.conf['docManagers'], docManagers);
+        self.assertEqual(self.conf['docManagers'], docManagers);
 
         self.reset_config()
 
@@ -226,7 +228,7 @@ class TestConfig(unittest.TestCase):
             }
         ]
         self.load_options(args)
-        self.assertEquals(self.conf['docManagers'], docManagers);
+        self.assertEqual(self.conf['docManagers'], docManagers);
 
         # don't reset doc managers
 
@@ -250,6 +252,8 @@ class TestConfig(unittest.TestCase):
                               '-a': 'username'
                           })
 
+        self.reset_config()
+
         # can't specify password and password file
         self.assertRaises(errors.InvalidConfiguration,
                           self.load_options, {
@@ -258,13 +262,13 @@ class TestConfig(unittest.TestCase):
                               '-f': 'password_file'
                           })
 
+        self.reset_config()
+
         # docManagers must be a list
         test_config = {
             'docManagers': "hello"
         }
-        self.load_json(test_config)
-        self.assertRaises(errors.InvalidConfiguration, 
-                          self.load_options, {})
+        self.assertRaises(errors.InvalidConfiguration, self.load_json, test_config)
 
         # every element of docManagers must contain a 'docManager' property
         test_config = {
@@ -274,9 +278,7 @@ class TestConfig(unittest.TestCase):
                 }
             ]
         }
-        self.load_json(test_config)
-        self.assertRaises(errors.InvalidConfiguration, 
-                          self.load_options, {})
+        self.assertRaises(errors.InvalidConfiguration, self.load_json, test_config)
 
         # auto commit interval can't be negative
         test_config = {
@@ -287,6 +289,4 @@ class TestConfig(unittest.TestCase):
                 }
             ]
         }
-        self.load_json(test_config)
-        self.assertRaises(errors.InvalidConfiguration, 
-                          self.load_options, {})
+        self.assertRaises(errors.InvalidConfiguration, self.load_json, test_config)

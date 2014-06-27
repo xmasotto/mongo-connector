@@ -17,22 +17,36 @@ import logging
 import optparse
 import sys
 
-from mongo_connector import constants, errors
+from mongo_connector import compat, constants, errors
 from mongo_connector.compat import reraise
 
-def default_apply_function(option, values):
-    _, value = values.items()[0]
-    if value:
-        option.value = value
+# assign the first element of cli_values to option.value
+def default_apply_function(option, cli_values):
+    try:
+        key = next(iter(cli_values))
+        value = cli_values[key]
+        if value is not None:
+            option.value = value
+    except StopIteration:
+        pass
 
 class Option(object):
-    def __init__(self, config_key=None, default=None, 
+    def __init__(self, config_key=None, default=None,
                  apply_function=default_apply_function):
         self.config_key = config_key
         self.apply_function = apply_function
         self.value = default
         self.names = []
         self.cli_options = []
+        self.option_type = None
+        self.validate_type = lambda x:True
+
+    def set_type(self, option_type):
+        self.option_type = option_type
+        if option_type == str:
+            self.validate_type = compat.is_string
+        else:
+            self.validate_type = lambda x:isinstance(x,option_type)
 
     def add_cli(self, *args, **kwargs):
         self.cli_options.append( (args, kwargs) )
@@ -59,6 +73,7 @@ class Config(object):
                 with open(parsed_options.config_file) as f:
                     self.load_json(f.read())
             except (OSError, IOError, ValueError) as e:
+                print(sys.exc_info()[0])
                 reraise(errors.InvalidConfiguration, *sys.exc_info()[1:])
 
         # apply the command line arguments
@@ -73,7 +88,7 @@ class Config(object):
         keys = key.split('.')
         cur = self.config_key_to_option[keys[0]].value
         for k in keys[1:]:
-            if cur:
+            if cur is not None:
                 if isinstance(cur, dict):
                     cur = cur.get(k)
                 else:
@@ -86,6 +101,12 @@ class Config(object):
             option = self.config_key_to_option.get(k)
             if option:
                 option.value = parsed_config[k]
+                if not option.validate_type(option.value):
+                    raise errors.InvalidConfiguration(
+                        "%s should have %r, %r was given!" %
+                        (option.config_key,
+                         option.option_type,
+                         type(option.value)))
             else:
                 if not k.startswith("__"):
                     logging.warning("Unrecognized option: %s" % k)

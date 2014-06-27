@@ -19,6 +19,7 @@ import logging
 import logging.handlers
 import os
 import pymongo
+import pprint
 import re
 import shutil
 import sys
@@ -418,6 +419,7 @@ def get_config_options():
     #-m is for the main address, which is a host:port pair, ideally of the
     #mongos. For non sharded clusters, it can be the primary.
     main_address = add_option("mainAddress", default="localhost:27017")
+    main_address.set_type(str)
     main_address.add_cli("-m", "--main", dest="main_address", help=
                 """Specify the main address, which is a"""
                 """ host:port pair. For sharded clusters, this"""
@@ -431,6 +433,7 @@ def get_config_options():
     #to store the last timestamp read on a specific oplog. This allows for
     #quick recovery from failure.
     oplog_file = add_option("oplogFile", default="oplog.timestamp")
+    oplog_file.set_type(str)
     oplog_file.add_cli("-o", "--oplog-ts", dest="oplog_file", help=
                 """Specify the name of the file that stores the """
                 """oplog progress timestamps. """
@@ -448,6 +451,7 @@ def get_config_options():
     #--no-dump specifies whether we should read an entire collection from
     #scratch if no timestamp is found in the oplog_config.
     no_dump = add_option("noDump", False)
+    no_dump.set_type(bool)
     no_dump.add_cli("--no-dump", action="store_true", dest="no_dump", help=
                 "If specified, this flag will ensure that "
                 "mongo_connector won't read the entire contents of a "
@@ -456,6 +460,7 @@ def get_config_options():
     #--batch-size specifies num docs to read from oplog before updating the
     #--oplog-ts config file with current oplog position
     batch_size = add_option("batchSize", default=constants.DEFAULT_BATCH_SIZE)
+    batch_size.set_type(int)
     batch_size.add_cli("--batch-size", type="int", dest="batch_size", help=
                 "Specify an int to update the --oplog-ts "
                 "config file with latest position of oplog every "
@@ -464,15 +469,15 @@ def get_config_options():
                 "You may want more frequent updates if you are at risk "
                 "of falling behind the earliest timestamp in the oplog")
 
-    #-v enables verbose logging
-
     def apply_verbosity(option, cli_values):
         if cli_values['verbose']:
             option.value = 1
         if option.value < 0:
             raise errors.InvalidConfiguration("Verbosity gotta be positive!")
 
+    #-v enables verbose logging
     verbosity = add_option("verbosity", default=0, apply_function=apply_verbosity)
+    verbosity.set_type(int)
     verbosity.add_cli("-v", "--verbose", action="store_true",
                dest="verbose", help=
                "Sets verbose logging to be on.")
@@ -489,6 +494,8 @@ def get_config_options():
             
         if cli_values['enable_syslog']:
             option.value['type'] = 'syslog'
+            option.value['host'] = 'localhost:514'
+            option.value['facility'] = 'user'
 
         if cli_values['syslog_host']:
             option.value['host'] = cli_values['syslog_host']
@@ -496,13 +503,9 @@ def get_config_options():
         if cli_values['syslog_facility']:
             option.value['facility'] = cli_values['syslog_facility']
 
-    default_logging = {
-        'host': 'localhost:514',
-        'facility': 'user'
-    }
-
-    logging = add_option("logging", default_logging, apply_logging)
-
+    logging = add_option("logging", {}, apply_logging)
+    logging.set_type(dict)
+    
     #-w enable logging to a file
     logging.add_cli("-w", "--logfile", dest="logfile", help=
                "Log all output to a file rather than stream to "
@@ -534,11 +537,13 @@ def get_config_options():
         if cli_values['password_file']:
             option.value['passwordFile'] = cli_values['password_file']
 
-        if option.value['adminUsername']:
-            if not option.value['password'] and not option.value['passwordFile']:
+        if option.value.get("adminUsername"):
+            password = option.value.get("password")
+            passwordFile = option.value.get("passwordFile")
+            if not password and not passwordFile:
                 raise errors.InvalidConfiguration(
                     "Admin username specified without password!")
-            if option.value['password'] and option.value['passwordFile']:
+            if password and passwordFile:
                 raise errors.InvalidConfiguration(
                     "Can't specify both password and password file!")
 
@@ -550,6 +555,7 @@ def get_config_options():
 
     authentication = add_option("authentication", 
                                 default_authentication, apply_authentication)
+    authentication.set_type(dict)
 
     #-a is to specify the username for authentication.
     authentication.add_cli(
@@ -583,6 +589,7 @@ def get_config_options():
             option.value = cli_values['fields'].split(",")
 
     fields = add_option("fields", [], apply_fields)
+    fields.set_type(list)
 
     #-i to specify the list of fields to export
     fields.add_cli("-i", "--fields", dest="fields", help=
@@ -611,14 +618,15 @@ def get_config_options():
                 raise errors.InvalidConfiguration(
                     "Destination namespace set should be the"
                     " same length as the origin namespace set")
-            option.value['map'] = dict(zip(ns_set, dest_ns_set))
+            option.value['mapping'] = dict(zip(ns_set, dest_ns_set))
 
     default_namespaces = {
         "include": [],
-        "map": {}
+        "mapping": {}
     }
 
     namespaces = add_option("namespaces", default_namespaces, apply_namespaces)
+    namespaces.set_type(dict)
 
     #-n is to specify the namespaces we want to consider. The default
     #considers all the namespaces
@@ -687,9 +695,6 @@ def get_config_options():
 
         # validate doc managers
         if option.value:
-            if not isinstance(option.value, list):
-                raise errors.InvalidConfiguration(
-                    "docManagers must be a list.")
             for dm in option.value:
                 if not isinstance(dm, dict):
                     raise errors.InvalidConfiguration(
@@ -710,6 +715,7 @@ def get_config_options():
                         "autoCommitInterval must be non-negative")
 
     doc_managers = add_option("docManagers", None, apply_doc_managers)
+    doc_managers.set_type(list)
     doc_managers.add_cli(
         "-d", "--docManager", "--doc-managers", dest="doc_managers", help=
         """Used to specify the path to each doc manager """
@@ -773,6 +779,7 @@ def get_config_options():
     #--continue-on-error to continue to upsert documents during a collection
     #dump, even if the documents cannot be inserted for some reason
     continue_on_error = add_option("continueOnError", False)
+    continue_on_error.set_type(bool)
     continue_on_error.add_cli(
         "--continue-on-error", action="store_true", 
         dest="continue_on_error", help=
@@ -794,40 +801,39 @@ def get_config_options():
 
     return result
 
-
 def main():
     """ Starts the mongo connector (assuming CLI)
     """
     conf = config.Config(get_config_options())
     conf.parse_args()
 
-    for option in conf.options:
-        if option.config_key:
-            print("%r: %r" % (option.config_key, option.value))
-
-    exit(0)
+    print("Loading Mongo Connector with the following configuration:")
+    pp = pprint.PrettyPrinter(indent=4)
+    pp.pprint(dict(
+        (opt.config_key, opt.value) for opt in conf.options if opt.config_key))
+    print("")
 
     logger = logging.getLogger()
-    loglevel = logging.INFO
-    if conf['verbosity'] > 0:
-        loglevel = logging.DEBUG
+    loglevel = logging.DEBUG if conf['verbosity'] > 0 else logging.INFO
     logger.setLevel(loglevel)
 
-    if conf['syslog.enabled']:
-        syslog_info = conf['syslog.host'].split(":")
-        syslog_host = logging.handlers.SysLogHandler(
-            address=(syslog_info[0], int(syslog_info[1])),
-            facility=conf['syslog.facility']
-        )
-        syslog_host.setLevel(loglevel)
-        logger.addHandler(syslog_host)
-    elif conf['logFile'] is not None:
-        log_out = logging.FileHandler(conf['logFile'])
+    if conf['logging.type'] == 'file':
+        log_out = logging.FileHandler(conf['logging.filename'])
         log_out.setLevel(loglevel)
         log_out.setFormatter(logging.Formatter(
             '%(asctime)s - %(levelname)s - %(message)s'))
         logger.addHandler(log_out)
-    else:
+
+    if conf['logging.type'] == 'syslog':
+        syslog_info = conf['logging.host'].split(":")
+        syslog_host = logging.handlers.SysLogHandler(
+            address=(syslog_info[0], int(syslog_info[1])),
+            facility=conf['logging.facility']
+        )
+        syslog_host.setLevel(loglevel)
+        logger.addHandler(syslog_host)
+
+    if conf['logging.type'] is None:
         log_out = logging.StreamHandler()
         log_out.setLevel(loglevel)
         log_out.setFormatter(logging.Formatter(
@@ -851,35 +857,32 @@ def main():
     if len(doc_managers) == 0:
         logger.info('No doc managers specified, using simulator.')
 
-    ns_set = conf['namespaceSet']
-    dest_mapping = conf['destMapping']
-    fields = conf['fields']
-
     key = None
-    if conf['passwordFile'] is not None:
+    password_file = conf['authentication.passwordFile']
+    if password_file is not None:
         try:
             key = open(conf['passwordFile']).read()
             key = re.sub(r'\s', '', key)
         except IOError:
             logger.error('Could not parse password authentication file!')
             sys.exit(1)
-
-    if conf['password'] is not None:
-        key = options.password
+    password = conf['authentication.password']
+    if password is not None:
+        key = password
 
     connector = Connector(
         address=conf['mainAddress'],
         oplog_checkpoint=conf['oplogFile'],
         target_url=target_urls,
-        ns_set=ns_set,
+        ns_set=conf['namespaces.include'],
         u_key=unique_keys,
         auth_key=key,
         doc_manager=doc_managers,
-        auth_username=conf['adminUsername'],
+        auth_username=conf['authentication.adminUsername'],
         collection_dump=(not conf['noDump']),
         batch_size=conf['batchSize'],
-        fields=fields,
-        dest_mapping=dest_mapping,
+        fields=conf['fields'],
+        dest_mapping=conf['namespaces.mapping'],
         auto_commit_interval=auto_commit_intervals,
         continue_on_error=conf['continueOnError']
     )
