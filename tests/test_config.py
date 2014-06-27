@@ -46,7 +46,7 @@ class TestConfig(unittest.TestCase):
 
     def test_default(self):
         # Make sure default configuration is valid
-        self.load_options({})
+        self.load_options()
 
     def test_parse_json(self):
         # Test for basic json parsing correctness
