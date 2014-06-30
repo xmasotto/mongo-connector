@@ -420,54 +420,58 @@ def get_config_options():
     #mongos. For non sharded clusters, it can be the primary.
     main_address = add_option("mainAddress", "localhost:27017")
     main_address.set_type(str)
-    main_address.add_cli("-m", "--main", dest="main_address", help=
-                "Specify the main address, which is a"
-                " host:port pair. For sharded clusters, this"
-                " should be the mongos address. For individual"
-                " replica sets, supply the address of the"
-                " primary. For example, `-m localhost:27217`"
-                " would be a valid argument to `-m`. Don't use"
-                " quotes around the address.")
+    main_address.add_cli(
+        "-m", "--main", dest="main_address", help=
+        "Specify the main address, which is a"
+        " host:port pair. For sharded clusters, this"
+        " should be the mongos address. For individual"
+        " replica sets, supply the address of the"
+        " primary. For example, `-m localhost:27217`"
+        " would be a valid argument to `-m`. Don't use"
+        " quotes around the address.")
 
     #-o is to specify the oplog-config file. This file is used by the system
     #to store the last timestamp read on a specific oplog. This allows for
     #quick recovery from failure.
     oplog_file = add_option("oplogFile", "oplog.timestamp")
     oplog_file.set_type(str)
-    oplog_file.add_cli("-o", "--oplog-ts", dest="oplog_file", help=
-                "Specify the name of the file that stores the "
-                "oplog progress timestamps. "
-                "This file is used by the system to store the last "
-                "timestamp read on a specific oplog. This allows "
-                "for quick recovery from failure. By default this "
-                "is `config.txt`, which starts off empty. An empty "
-                "file causes the system to go through all the mongo "
-                "oplog and sync all the documents. Whenever the "
-                "cluster is restarted, it is essential that the "
-                "oplog-timestamp config file be emptied - otherwise "
-                "the connector will miss some documents and behave "
-                "incorrectly.")
+    oplog_file.add_cli(
+        "-o", "--oplog-ts", dest="oplog_file", help=
+        "Specify the name of the file that stores the "
+        "oplog progress timestamps. "
+        "This file is used by the system to store the last "
+        "timestamp read on a specific oplog. This allows "
+        "for quick recovery from failure. By default this "
+        "is `config.txt`, which starts off empty. An empty "
+        "file causes the system to go through all the mongo "
+        "oplog and sync all the documents. Whenever the "
+        "cluster is restarted, it is essential that the "
+        "oplog-timestamp config file be emptied - otherwise "
+        "the connector will miss some documents and behave "
+        "incorrectly.")
 
     #--no-dump specifies whether we should read an entire collection from
     #scratch if no timestamp is found in the oplog_config.
     no_dump = add_option("noDump", False)
     no_dump.set_type(bool)
-    no_dump.add_cli("--no-dump", action="store_true", dest="no_dump", help=
-                "If specified, this flag will ensure that "
-                "mongo_connector won't read the entire contents of a "
-                "namespace iff --oplog-ts points to an empty file.")
+    no_dump.add_cli(
+        "--no-dump", action="store_true", dest="no_dump", help=
+        "If specified, this flag will ensure that "
+        "mongo_connector won't read the entire contents of a "
+        "namespace iff --oplog-ts points to an empty file.")
 
     #--batch-size specifies num docs to read from oplog before updating the
     #--oplog-ts config file with current oplog position
     batch_size = add_option("batchSize", constants.DEFAULT_BATCH_SIZE)
     batch_size.set_type(int)
-    batch_size.add_cli("--batch-size", type="int", dest="batch_size", help=
-                "Specify an int to update the --oplog-ts "
-                "config file with latest position of oplog every "
-                "N documents. By default, the oplog config isn't "
-                "updated until we've read through the entire oplog. "
-                "You may want more frequent updates if you are at risk "
-                "of falling behind the earliest timestamp in the oplog")
+    batch_size.add_cli(
+        "--batch-size", type="int", dest="batch_size", help=
+        "Specify an int to update the --oplog-ts "
+        "config file with latest position of oplog every "
+        "N documents. By default, the oplog config isn't "
+        "updated until we've read through the entire oplog. "
+        "You may want more frequent updates if you are at risk "
+        "of falling behind the earliest timestamp in the oplog")
 
     def apply_verbosity(option, cli_values):
         if cli_values['verbose']:
@@ -478,9 +482,10 @@ def get_config_options():
     #-v enables verbose logging
     verbosity = add_option("verbosity", 0, apply_verbosity)
     verbosity.set_type(int)
-    verbosity.add_cli("-v", "--verbose", action="store_true",
-               dest="verbose", help=
-               "Sets verbose logging to be on.")
+    verbosity.add_cli(
+        "-v", "--verbose", action="store_true",
+        dest="verbose", help=
+        "Sets verbose logging to be on.")
 
     def apply_logging(option, cli_values):
         if cli_values['logfile'] and cli_values['enable_syslog']:
@@ -510,25 +515,29 @@ def get_config_options():
     logging.set_type(dict)
     
     #-w enable logging to a file
-    logging.add_cli("-w", "--logfile", dest="logfile", help=
-               "Log all output to a file rather than stream to "
-               "stderr. Omit to stream to stderr.")
+    logging.add_cli(
+        "-w", "--logfile", dest="logfile", help=
+        "Log all output to a file rather than stream to "
+        "stderr. Omit to stream to stderr.")
 
     #-s is to enable syslog logging.
-    logging.add_cli("-s", "--enable-syslog", action="store_true",
-               dest="enable_syslog", help=
-               "Used to enable logging to syslog."
-               " Use -l to specify syslog host.")
+    logging.add_cli(
+        "-s", "--enable-syslog", action="store_true",
+        dest="enable_syslog", help=
+        "Used to enable logging to syslog."
+        " Use -l to specify syslog host.")
 
     #--syslog-host is to specify the syslog host.
-    logging.add_cli("--syslog-host", dest="syslog_host", help=
-               "Used to specify the syslog host."
-               " The default is 'localhost:514'")
+    logging.add_cli(
+        "--syslog-host", dest="syslog_host", help=
+        "Used to specify the syslog host."
+        " The default is 'localhost:514'")
 
     #--syslog-facility is to specify the syslog facility.
-    logging.add_cli("--syslog-facility", dest="syslog_facility", help=
-               "Used to specify the syslog facility."
-               " The default is 'user'")
+    logging.add_cli(
+        "--syslog-facility", dest="syslog_facility", help=
+        "Used to specify the syslog facility."
+        " The default is 'user'")
 
     def apply_authentication(option, cli_values):
         if cli_values['admin_username']:
@@ -595,12 +604,13 @@ def get_config_options():
     fields.set_type(list)
 
     #-i to specify the list of fields to export
-    fields.add_cli("-i", "--fields", dest="fields", help=
-               "Used to specify the list of fields to export. "
-               "Specify a field or fields to include in the export. "
-               "Use a comma separated list of fields to specify multiple "
-               "fields. The '_id', 'ns' and '_ts' fields are always "
-               "exported.")
+    fields.add_cli(
+        "-i", "--fields", dest="fields", help=
+        "Used to specify the list of fields to export. "
+        "Specify a field or fields to include in the export. "
+        "Use a comma separated list of fields to specify multiple "
+        "fields. The '_id', 'ns' and '_ts' fields are always "
+        "exported.")
 
     def apply_namespaces(option, cli_values):
         if cli_values['ns_set']:
