@@ -17,10 +17,12 @@
 Receives documents from an OplogThread and takes the appropriate actions on
 Elasticsearch.
 """
+import base64
 import logging
 from threading import Timer
 
 from elasticsearch import Elasticsearch, exceptions as es_exceptions
+from elasticsearch.client import IndicesClient
 from elasticsearch.helpers import scan, streaming_bulk
 
 from mongo_connector import errors
@@ -46,6 +48,7 @@ class DocManager(DocManagerBase):
     def __init__(self, url, auto_commit_interval=DEFAULT_COMMIT_INTERVAL,
                  unique_key='_id', chunk_size=DEFAULT_MAX_BULK, **kwargs):
         self.elastic = Elasticsearch(hosts=[url])
+        self.indices = IndicesClient(self.elastic)
         self.auto_commit_interval = auto_commit_interval
         self.doc_type = 'string'  # default type is string, change if needed
         self.unique_key = unique_key
@@ -54,10 +57,27 @@ class DocManager(DocManagerBase):
             self.run_auto_commit()
         self._formatter = DefaultDocumentFormatter()
 
+        self.explicit_mappings = {}
+        self.attachment_field = "content"
+
     def stop(self):
         """Stop the auto-commit thread."""
         self.auto_commit_interval = None
 
+    def add_explicit_mapping(self, index, doc_type, field, body):
+        """Ensure that the given explicit mapping has been applied."""
+        k = (index, doc_type, field)
+        if self.explicit_mappings.get(k) != body:
+            mapping = {
+                "properties": {
+                    field: body
+                }
+            }
+            self.indices.put_mapping(index=index,
+                                     doc_type=doc_type,
+                                     body=mapping)
+            self.explicit_mappings[k] = body
+            
     @wrap_exceptions
     def update(self, doc, update_spec):
         """Apply updates given in update_spec to the document whose id
@@ -122,6 +142,28 @@ class DocManager(DocManagerBase):
             # This can happen when mongo-connector starts up, there is no
             # config file, but nothing to dump
             pass
+
+    @wrap_exceptions
+    def insert_file(self, f):
+        doc_type = self.doc_type
+        index = f.ns
+        attachment_field = self.attachment_field
+
+        # make sure that elasticsearch treats it like a file
+        try:
+            self.add_explicit_mapping(index, doc_type, attachment_field,
+                                      {"type": "attachment"})
+        except es_exceptions.TransportError:
+            raise errors.OperationFailed(
+                "Your version of elasticsearch does not support"
+                " attachment mappings.")
+
+        body = self._formatter.format_document(f.get_metadata())
+        body[attachment_field] = base64.b64encode(f.read()).decode()
+        doc_id = str(body.pop('_id'))
+        self.elastic.index(index=index, doc_type=doc_type,
+                           body=body, id=doc_id, 
+                           refresh=(self.auto_commit_interval==0))
 
     @wrap_exceptions
     def remove(self, doc):

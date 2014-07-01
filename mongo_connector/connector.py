@@ -687,7 +687,7 @@ def main():
         dest_mapping = dict(zip(ns_set, dest_ns_set))
 
     #TODO
-    gridfs_set = ["test.test.fs"]
+    gridfs_set = ["test.fs"]
 
     fields = options.fields
     if fields is not None:

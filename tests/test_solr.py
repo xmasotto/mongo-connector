@@ -79,7 +79,8 @@ class TestSynchronizer(unittest.TestCase):
         self.connector.start()
         assert_soon(lambda: len(self.connector.shard_set) > 0)
         retry_until_ok(self.conn.test.test.remove)
-        retry_until_ok(self.conn.test.fs.remove)
+        retry_until_ok(self.conn.test.fs.files.remove)
+        retry_until_ok(self.conn.test.fs.chunks.remove)
         assert_soon(lambda: sum(1 for _ in self.solr_conn.search('*:*')) == 0)
             
     def tearDown(self):

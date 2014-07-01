@@ -33,6 +33,18 @@ class GridFSFile(object):
 
         self.ensure_file()
 
+    def get_metadata(self):
+        result = {
+            '_id': self._id,
+            '_ts': self._ts,
+            'ns': self.ns,
+            'upload_date': self.upload_date,
+            'md5': self.md5,
+        }
+        if self.filename is not None:
+            result['filename'] = self.filename
+        return result
+
     def ensure_file(self):
         if self.f is None:
             raise errors.OperationFailed(

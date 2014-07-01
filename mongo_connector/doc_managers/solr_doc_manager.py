@@ -236,6 +236,23 @@ class DocManager(DocManagerBase):
             self.solr.add(cleaned, **add_kwargs)
 
     @wrap_exceptions
+    def insert_file(self, f):
+        params = self._formatter.format_document(f.get_metadata())
+        params[self.unique_key] = params.pop('_id')
+        params = dict(('literal.' + k, v) for k, v in params)
+
+        if self.auto_commit_interval == 0:
+            params['commit'] = 'true'
+
+        request = Request(os.path.join(self.url, 
+                     "update/extract?%s" % urllib.urlencode(params)))
+
+        request.add_header("Content-type", "application/octet-stream")
+        request.add_data(f)
+        response = urlopen(request)
+        logging.debug(response.read())
+
+    @wrap_exceptions
     def remove(self, doc):
         """Removes documents from Solr
 
@@ -290,25 +307,3 @@ class DocManager(DocManagerBase):
             r['_id'] = r.pop(self.unique_key)
             return r
 
-    def insert_file(self, f):
-        params = {
-            'literal.%s' % self.unique_key: f._id,
-            'literal.ns': f.ns,
-            'literal._ts': f._ts,
-            'literal.upload_date': f.upload_date,
-            'literal.md5': f.md5,
-        }
-
-        if f.filename:
-            params['literal.filename'] = f.filename
-
-        if self.auto_commit_interval == 0:
-            params['commit'] = 'true'
-
-        request = Request(os.path.join(self.url, 
-                     "update/extract?%s" % urllib.urlencode(params)))
-
-        request.add_header("Content-type", "application/octet-stream")
-        request.add_data(f)
-        response = urlopen(request)
-        logging.debug(response.read())
