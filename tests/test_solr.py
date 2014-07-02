@@ -74,13 +74,13 @@ class TestSynchronizer(unittest.TestCase):
             auth_key=None,
             doc_manager='mongo_connector/doc_managers/solr_doc_manager.py',
             auto_commit_interval=0,
-            gridfs_set=['test.fs']
+            gridfs_set=['test.test']
         )
         self.connector.start()
         assert_soon(lambda: len(self.connector.shard_set) > 0)
         retry_until_ok(self.conn.test.test.remove)
-        retry_until_ok(self.conn.test.fs.files.remove)
-        retry_until_ok(self.conn.test.fs.chunks.remove)
+        retry_until_ok(self.conn.test.test.files.remove)
+        retry_until_ok(self.conn.test.test.chunks.remove)
         assert_soon(lambda: sum(1 for _ in self.solr_conn.search('*:*')) == 0)
             
     def tearDown(self):
@@ -124,10 +124,11 @@ class TestSynchronizer(unittest.TestCase):
     def test_insert_file(self):
         """Tests inserting a gridfs file
         """
-        fs = GridFS(self.conn['test'])
+        fs = GridFS(self.conn['test'], 'test')
         test_data = "test_insert_file test file"
         id = fs.put(test_data, filename="test.txt")
         assert_soon(lambda: sum(1 for _ in self.solr_conn.search('*:*')) > 0)
+
         res = list(self.solr_conn.search('test_insert_file'))
         self.assertEqual(len(res), 1)
         doc = res[0]
@@ -138,7 +139,7 @@ class TestSynchronizer(unittest.TestCase):
     def test_remove_file(self):
         """Tests removing a gridfs file
         """
-        fs = GridFS(self.conn['test'])
+        fs = GridFS(self.conn['test'], 'test')
         id = fs.put("test file", filename="test.txt")
         assert_soon(lambda: sum(1 for _ in self.solr_conn.search("*:*")) == 1)
         fs.delete(id)

@@ -239,7 +239,7 @@ class DocManager(DocManagerBase):
     def insert_file(self, f):
         params = self._formatter.format_document(f.get_metadata())
         params[self.unique_key] = params.pop('_id')
-        params = dict(('literal.' + k, v) for k, v in params)
+        params = dict(('literal.' + k, v) for k, v in params.items())
 
         if self.auto_commit_interval == 0:
             params['commit'] = 'true'

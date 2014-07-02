@@ -35,8 +35,8 @@ from mongo_connector.doc_managers.formatters import DefaultDocumentFormatter
 
 wrap_exceptions = exception_wrapper({
     es_exceptions.ConnectionError: errors.ConnectionFailed,
-    es_exceptions.TransportError: errors.OperationFailed})
-
+    es_exceptions.TransportError: errors.OperationFailed,
+    es_exceptions.NotFoundError: errors.OperationFailed})
 
 class DocManager(DocManagerBase):
     """Elasticsearch implementation of the DocManager interface.
