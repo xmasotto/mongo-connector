@@ -42,7 +42,7 @@ class Connector(threading.Thread):
                  collection_dump=True, batch_size=constants.DEFAULT_BATCH_SIZE,
                  fields=None, dest_mapping={},
                  auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL,
-                 continue_on_error=False):
+                 continue_on_error=False, doc_manager_args=[]):
 
         if target_url and not doc_manager:
             raise errors.ConnectorError("Cannot create a Connector with a "
@@ -153,6 +153,11 @@ class Connector(threading.Thread):
                     else:
                         docman_kwargs[
                             'auto_commit_interval'] = auto_commit_interval
+
+                    args = doc_manager_args[i]
+                    if args:
+                        for k,v in args:
+                            docman_kwargs[k] = v
 
                     # self.target_urls may be shorter than
                     # self.doc_managers, or left as None
@@ -876,11 +881,13 @@ def main():
         unique_keys = [dm.get('uniqueKey') for dm in conf['docManagers']]
         auto_commit_intervals = [dm.get('autoCommitInterval') 
                                  for dm in conf['docManagers']]
+        doc_manager_args = [dm.get('args') for dm in conf['docManagers']]
     else:
         doc_managers = []
         target_urls = []
         unique_keys = constants.DEFAULT_UNIQUE_KEY
         auto_commit_intervals = constants.DEFAULT_COMMIT_INTERVAL
+        doc_manager_args = []
 
     if len(doc_managers) == 0:
         logger.info('No doc managers specified, using simulator.')
@@ -912,7 +919,8 @@ def main():
         fields=conf['fields'],
         dest_mapping=conf['namespaces.mapping'],
         auto_commit_interval=auto_commit_intervals,
-        continue_on_error=conf['continueOnError']
+        continue_on_error=conf['continueOnError'],
+        doc_manager_args=doc_manager_args,
     )
     connector.start()
 
