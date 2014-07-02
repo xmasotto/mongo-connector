@@ -195,9 +195,20 @@ class OplogThread(threading.Thread):
                         operation = entry['op']
                         ns = entry['ns']
 
+                        is_gridfs_file = False
+                        if coll.endswith(".files"):
+                            for i in range(len(self.gridfs_files_set)):
+                                if self.gridfs_files_set[i] == entry['ns']:
+                                    ns = self.gridfs_set[i]
+                                    is_gridfs_file = True
+                                    break
+                            else:
+                                # skip all gridfs namespaces that aren't
+                                # in gridfs_set
+                                continue
+
                         # use namespace mapping if one exists
                         ns = self.dest_mapping.get(entry['ns'], ns)
-                        db, coll = ns.split('.', 1)
 
                         # Ignore system collections
                         if coll.startswith("system."):
@@ -211,18 +222,6 @@ class OplogThread(threading.Thread):
                             try:
                                 logging.debug("OplogThread: Operation for this "
                                               "entry is %s" % str(operation))
-
-                                is_gridfs_file = False
-                                if coll.endswith(".files"):
-                                    for i in range(len(self.gridfs_files_set)):
-                                        if self.gridfs_files_set[i] == ns:
-                                            ns = self.gridfs_set[i]
-                                            is_gridfs_file = True
-                                            break
-                                    else:
-                                        # skip all gridfs namespaces that aren't
-                                        # in gridfs_set
-                                        continue
 
                                 # Remove
                                 if operation == 'd':
