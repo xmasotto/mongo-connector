@@ -42,7 +42,6 @@ class OplogThread(threading.Thread):
                  auth_username, repl_set=None, collection_dump=True,
                  batch_size=DEFAULT_BATCH_SIZE, fields=None,
                  dest_mapping={}, continue_on_error=False, gridfs_set=[]):
-
         """Initialize the oplog thread.
         """
         super(OplogThread, self).__init__()
@@ -414,7 +413,6 @@ class OplogThread(threading.Thread):
                               % self.oplog)
                 return None
 
-
     def dump_collection(self):
         """Dumps collection into the target system.
 
@@ -423,7 +421,6 @@ class OplogThread(threading.Thread):
         """
 
         dump_set = self.namespace_set or []
-
         logging.debug("OplogThread: Dumping set of collections %s " % dump_set)
 
         #no namespaces specified

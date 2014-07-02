@@ -1038,6 +1038,7 @@
    <copyField source="includes" dest="text"/>
    <copyField source="manu" dest="manu_exact"/>
 
+   <copyField source="filename" dest="text"/>
    <copyField source="content" dest="text"/>
 
    <!-- Copy the price into a currency enabled field (default USD) -->

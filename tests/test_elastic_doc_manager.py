@@ -113,7 +113,7 @@ class ElasticDocManagerTester(ElasticsearchTestCase):
         self.assertEqual(len(res), 0)
 
     def test_insert_file(self):
-        """Ensure we can properly insert a file into ElasticSearch via DocManager.
+        """Ensure we can properly insert a file into ElasticSearch
         """
         test_data = ' '.join(str(x) for x in range(100000))
         docc = {

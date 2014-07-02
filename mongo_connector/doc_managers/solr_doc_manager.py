@@ -306,4 +306,3 @@ class DocManager(DocManagerBase):
         for r in result:
             r['_id'] = r.pop(self.unique_key)
             return r
-

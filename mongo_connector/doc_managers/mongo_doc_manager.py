@@ -128,7 +128,7 @@ class DocManager(DocManagerBase):
 
         doc2 = self.mongo['__mongo_connector'][doc['ns']].find_and_modify(
             {'_id': doc['_id']}, remove=True)
-        if 'gridfs_id' in doc2:
+        if doc2.get('gridfs_id'):
             GridFS(self.mongo[database], coll).delete(doc2['gridfs_id'])
         else:
             self.mongo[database][coll].remove({'_id': doc["_id"]})

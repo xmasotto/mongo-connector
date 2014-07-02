@@ -51,7 +51,6 @@ class TestSynchronizer(unittest.TestCase):
                                replicaSet='test-solr')
         cls.solr_conn = Solr('http://%s/solr' % solr_pair)
         cls.solr_conn.delete(q='*:*')
-        #logging.getLogger().setLevel(logging.DEBUG)
 
     @classmethod
     def tearDownClass(cls):
@@ -82,20 +81,12 @@ class TestSynchronizer(unittest.TestCase):
         retry_until_ok(self.conn.test.test.files.remove)
         retry_until_ok(self.conn.test.test.chunks.remove)
         assert_soon(lambda: sum(1 for _ in self.solr_conn.search('*:*')) == 0)
-            
+
     def tearDown(self):
         self.connector.join()
 
     def test_shard_length(self):
         """Tests the shard_length to see if the shard set was recognized
-        
-
-        id = self.fs_skipped.put(test_data, filename="test.txt")
-        assert_soon(self.fs.find()
-        
-
-        id = self.fs_skipped.put(test_data, filename="test.txt")
-        assert_soon(self.fs.find()
         """
 
         self.assertEqual(len(self.connector.shard_set), 1)
@@ -144,17 +135,6 @@ class TestSynchronizer(unittest.TestCase):
         assert_soon(lambda: sum(1 for _ in self.solr_conn.search("*:*")) == 1)
         fs.delete(id)
         assert_soon(lambda: sum(1 for _ in self.solr_conn.search("*:*")) == 0)
-    
-    def test_insert_file_skipped(self):
-        """Tests whether gridfs files that aren't in gridfs_set are skipped.
-        """
-        fs = GridFS(self.conn['test'], "skipped")
-        id = fs.put("skipped file", filename="skipped.txt")
-        self.conn['test']['test'].insert({'name': 'paulie'})
-        assert_soon(lambda: sum(1 for _ in self.solr_conn.search("paulie")) > 0)
-        res = list(self.solr_conn.search('*:*'))
-        self.assertEquals(len(res), 1)
-        self.assertNotEqual(res[0]['_id'], id)
 
     def test_update(self):
         """Test update operations on Solr.

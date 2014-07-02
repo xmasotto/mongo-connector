@@ -186,8 +186,8 @@ class MongoDocManagerTester(unittest.TestCase):
                 '_ts': 5767301236327972865}
         self.MongoDoc.upsert(docc)
         self.MongoDoc.commit()
-        search = list(self.mongo.find())
-        search2 = list(self.MongoDoc._search())
+        search = list(self.MongoDoc._search())
+        search2 = list(self.mongo.find())
         self.assertTrue(len(search) == len(search2))
         self.assertTrue(len(search) != 0)
         self.assertTrue(all(x in search for x in search2) and

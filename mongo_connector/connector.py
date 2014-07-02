@@ -686,7 +686,7 @@ def main():
         ## Create a mapping of source ns to dest ns as a dict
         dest_mapping = dict(zip(ns_set, dest_ns_set))
 
-    #TODO
+    #TODO make this a command line argument
     gridfs_set = ["test.fs"]
 
     fields = options.fields
