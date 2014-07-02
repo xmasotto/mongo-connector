@@ -150,14 +150,8 @@ class DocManager(DocManagerBase):
         attachment_field = self.attachment_field
 
         # make sure that elasticsearch treats it like a file
-        try:
-            self.add_explicit_mapping(index, doc_type, attachment_field,
-                                      {"type": "attachment"})
-        except es_exceptions.TransportError:
-            raise errors.OperationFailed(
-                "Your version of elasticsearch does not support"
-                " attachment mappings.")
-
+        self.add_explicit_mapping(index, doc_type, attachment_field,
+                                  {"type": "attachment"})
         body = self._formatter.format_document(f.get_metadata())
         body[attachment_field] = base64.b64encode(f.read()).decode()
         doc_id = str(body.pop('_id'))
