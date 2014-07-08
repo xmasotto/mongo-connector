@@ -28,7 +28,7 @@ import threading
 import traceback
 from mongo_connector import errors, util
 from mongo_connector.constants import DEFAULT_BATCH_SIZE
-from mongo_connector.util import retry_until_ok
+from mongo_connector.util import log_fatal_exceptions, retry_until_ok
 
 from pymongo import MongoClient
 
@@ -132,6 +132,7 @@ class OplogThread(threading.Thread):
         else:
             self._fields = None
 
+    @log_fatal_exceptions
     def run(self):
         """Start the oplog worker.
         """

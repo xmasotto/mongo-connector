@@ -29,6 +29,10 @@ Operating System :: POSIX
 """
 
 import sys
+import os
+from distutils.core import Command
+from distutils.dir_util import mkpath, remove_tree
+from distutils.file_util import copy_file
 try:
     from setuptools import setup
 except ImportError:
@@ -48,6 +52,47 @@ try:
         extra_opts['long_description'] = fd.read()
 except IOError:
     pass        # Install without README.rst
+
+class InstallService(Command):
+    user_options = []
+    def initialize_options(self):
+        pass
+    def finalize_options(self):
+        pass
+    def run(self):
+        if os.geteuid() > 0:
+            print("Must be root user.")
+        else:
+            mkpath("/var/log/mongo-connector")
+            mkpath("/etc/init.d")
+            copy_file("./config.json", "/etc/mongo-connector.json")
+            copy_file("./scripts/mongo-connector",
+                      "/etc/init.d/mongo-connector")
+
+def remove_file(path):
+    if os.path.exists(path):
+        os.remove(path)
+        print("removing '%s'" % path)
+
+class UninstallService(Command):
+    user_options = []
+    def initialize_options(self):
+        pass
+    def finalize_options(self):
+        pass
+    def run(self):
+        if os.geteuid() > 0:
+            print("Must be root user.")
+        else:
+            if os.path.exists("/var/log/mongo-connector"):
+                remove_tree("/var/log/mongo-connector")
+            remove_file("/etc/mongo-connector.json")
+            remove_file("/etc/init.d/mongo-connector")
+
+extra_opts['cmdclass'] = {
+    "install_service": InstallService,
+    "uninstall_service": UninstallService
+}
 
 setup(name='mongo-connector',
       version="1.2.1+",

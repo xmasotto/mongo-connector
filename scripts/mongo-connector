@@ -1,0 +1,76 @@
+#!/bin/bash
+#
+# mongo-connector               Start Mongo Connector
+#
+# chkconfig: 345 90 25
+# description: Mongo Connector replicates data from MongoDB to external
+#              database systems.
+
+### BEGIN INIT INFO
+# Provides: mongo-connector
+# Default-Start: 3 4 5
+# Default-Stop: 0 1 6
+# Short-Description: Start up Mongo Connector
+# Description: Mongo Connector replicates data from MongoDB to external
+#              database systems.
+### END INIT INFO
+
+# source function library
+. /etc/rc.d/init.d/functions
+
+RETVAL=0
+lockfile=/var/lock/subsys/mongo-connector
+pidfile=/var/run/mongo-connector.pid
+
+mc="nohup python -m mongo_connector.connector \
+    -c /etc/mongo-connector.json &>/dev/null & \
+    echo "'$!'" > $pidfile"
+
+start()
+{
+    action "starting mongo-connector: " daemon --pidfile $pidfile $mc
+    RETVAL=$?
+    if [ $RETVAL -eq 0 ]; then
+        echo "done."
+    else
+        echo "failed. Please check exit code and logs for more information"
+    fi
+    return $RETVAL
+}
+
+stop()
+{
+    action "stopping mongo-connector: " killproc -p $pidfile
+    RETVAL=$?
+    if [ $RETVAL -eq 0 ]; then
+        echo "done."
+        rm -f $lockfile
+    else
+        echo "failed. Please check exit code and logs for more information"
+    fi
+    return $RETVAL
+}
+
+restart() {
+    $0 stop
+    $0 start
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        status -p $pidfile mongo-connector
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|restart|status}"
+        RETVAL=2
+esac
+exit $RETVAL

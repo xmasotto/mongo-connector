@@ -30,6 +30,7 @@ from mongo_connector import config, constants, errors, util
 from mongo_connector.locking_dict import LockingDict
 from mongo_connector.oplog_manager import OplogThread
 from mongo_connector.doc_managers import doc_manager_simulator as simulator
+from mongo_connector.util import log_fatal_exceptions
 
 from pymongo import MongoClient
 
@@ -276,6 +277,7 @@ class Connector(threading.Thread):
             oplog_dict[oplog_str] = util.long_to_bson_ts(time_stamp)
             #stored as bson_ts
 
+    @log_fatal_exceptions
     def run(self):
         """Discovers the mongo cluster and creates a thread for each primary.
         """
@@ -492,11 +494,11 @@ def get_config_options():
             raise errors.InvalidConfiguration(
                 "You cannot specify syslog and a logfile simultaneously,"
                 " please choose the logging method you would prefer.")
-        
+
         if cli_values['logfile']:
             option.value['type'] = 'file'
             option.value['filename'] = cli_values['logfile']
-            
+
         if cli_values['enable_syslog']:
             option.value['type'] = 'syslog'
 
@@ -505,7 +507,7 @@ def get_config_options():
 
         if cli_values['syslog_facility']:
             option.value['facility'] = cli_values['syslog_facility']
-            
+
     default_logging = {
         'host': constants.DEFAULT_SYSLOG_HOST,
         'facility': constants.DEFAULT_SYSLOG_FACILITY
@@ -513,7 +515,7 @@ def get_config_options():
 
     logging = add_option("logging", default_logging, apply_logging)
     logging.set_type(dict)
-    
+
     #-w enable logging to a file
     logging.add_cli(
         "-w", "--logfile", dest="logfile", help=
@@ -565,7 +567,7 @@ def get_config_options():
         'passwordFile': None
     }
 
-    authentication = add_option("authentication", 
+    authentication = add_option("authentication",
                                 default_authentication, apply_authentication)
     authentication.set_type(dict)
 
@@ -667,7 +669,7 @@ def get_config_options():
 
     def apply_doc_managers(option, cli_values):
         unique_key = cli_values['unique_key'] or constants.DEFAULT_UNIQUE_KEY
-        auto_commit_interval = (cli_values['auto_commit_interval'] 
+        auto_commit_interval = (cli_values['auto_commit_interval']
                                 or constants.DEFAULT_COMMIT_INTERVAL)
 
         if cli_values['doc_managers'] == None:
@@ -796,7 +798,7 @@ def get_config_options():
     continue_on_error = add_option("continueOnError", False)
     continue_on_error.set_type(bool)
     continue_on_error.add_cli(
-        "--continue-on-error", action="store_true", 
+        "--continue-on-error", action="store_true",
         dest="continue_on_error", help=
         "By default, if any document fails to upsert"
         " during a collection dump, the entire operation fails."
@@ -816,6 +818,7 @@ def get_config_options():
 
     return result
 
+@log_fatal_exceptions
 def main():
     """ Starts the mongo connector (assuming CLI)
     """
@@ -874,7 +877,7 @@ def main():
         doc_managers = [dm['docManager'] for dm in conf['docManagers']]
         target_urls = [dm['targetURL'] for dm in conf['docManagers']]
         unique_keys = [dm.get('uniqueKey') for dm in conf['docManagers']]
-        auto_commit_intervals = [dm.get('autoCommitInterval') 
+        auto_commit_intervals = [dm.get('autoCommitInterval')
                                  for dm in conf['docManagers']]
     else:
         doc_managers = []

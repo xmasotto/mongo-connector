@@ -3,18 +3,18 @@
     "__comment__": "To enable them, remove the preceding '__'",
 
     "mainAddress": "localhost:27017",
-    "oplogFile": "oplog.timestamp",
+    "oplogFile": "/var/log/mongo-connector/oplog.timestamp",
     "noDump": false,
     "batchSize": -1,
     "verbosity": 0,
     "continueOnError": true,
 
     "logging": {
-        "__type": "file",
-        "__filename": "mongo-connector.log",
+        "type": "file",
+        "filename": "/var/log/mongo-connector/mongo-connector.log",
 
-        "type": "syslog",
-        "host": "localhost:512"
+        "__type": "syslog",
+        "__host": "localhost:512"
     },
 
     "authentication": {

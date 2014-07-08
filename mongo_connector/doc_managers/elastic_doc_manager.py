@@ -17,6 +17,7 @@
 Receives documents from an OplogThread and takes the appropriate actions on
 Elasticsearch.
 """
+
 import logging
 from threading import Timer
 
