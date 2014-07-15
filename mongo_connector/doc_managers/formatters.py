@@ -1,4 +1,5 @@
 import base64
+import datetime
 import re
 
 from uuid import UUID
@@ -10,6 +11,7 @@ from mongo_connector.compat import PY3
 
 if PY3:
     long = int
+    unicode = str
 
 RE_TYPE = type(re.compile(""))
 try:
@@ -83,8 +85,10 @@ class DefaultDocumentFormatter(DocumentFormatter):
             return value.hex
         elif isinstance(value, (int, long, float)):
             return value
+        elif isinstance(value, datetime.datetime):
+            return value
         # Default
-        return str(value)
+        return unicode(value)
 
     def transform_element(self, key, value):
         yield key, self.transform_value(value)
