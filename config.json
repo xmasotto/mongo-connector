@@ -35,7 +35,7 @@
 
     "docManagers": [
         {
-            "docManager": "mongo_connector/doc_managers/elastic_doc_manager.py",
+            "docManager": "elastic_doc_manager",
             "targetURL": "localhost:9200",
             "__uniqueKey": "_id",
             "__autoCommitInterval": null

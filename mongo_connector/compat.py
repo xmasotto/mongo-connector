@@ -13,9 +13,13 @@ else:
 """)
 
 if PY3:
+    from itertools import zip_longest
+else:
+    from itertools import izip_longest as zip_longest
+
+if PY3:
     def is_string(x):
         return isinstance(x, str)
 else:
     def is_string(x):
         return isinstance(x, basestring)
-

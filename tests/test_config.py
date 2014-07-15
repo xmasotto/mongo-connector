@@ -21,6 +21,7 @@ else:
 
 from mongo_connector import config, constants, errors
 from mongo_connector.connector import get_config_options
+from mongo_connector.doc_managers import doc_manager_simulator
 
 class TestConfig(unittest.TestCase):
     def setUp(self):
@@ -112,7 +113,7 @@ class TestConfig(unittest.TestCase):
     def test_basic_options(self):
         # Test the assignment of individual options
         def test_option(arg_name, json_key, value):
-            self.load_options({arg_name : value})
+            self.load_options({arg_name: value})
             self.assertEqual(self.conf[json_key], value)
             self.reset_config()
 
@@ -125,13 +126,15 @@ class TestConfig(unittest.TestCase):
         self.load_options({'-w': 'logFile'})
         self.assertEqual(self.conf['logging.type'], 'file')
         self.assertEqual(self.conf['logging.filename'], 'logFile')
+        self.reset_config()
 
         self.load_options({'-s': 'true',
-                      '--syslog-host': 'testHost',
-                      '--syslog-facility': 'testFacility'})
+                           '--syslog-host': 'testHost',
+                           '--syslog-facility': 'testFacility'})
         self.assertEqual(self.conf['logging.type'], 'syslog')
         self.assertEqual(self.conf['logging.host'], 'testHost')
         self.assertEqual(self.conf['logging.facility'], 'testFacility')
+        self.reset_config()
 
         self.load_options({'-i': 'a,b,c'})
         self.assertEqual(self.conf['fields'], ['a', 'b', 'c'])
@@ -143,11 +146,11 @@ class TestConfig(unittest.TestCase):
             "-g": "dest_ns_1,dest_ns_2,dest_ns_3"
         })
         self.assertEqual(self.conf['namespaces.include'],
-                          ['source_ns_1', 'source_ns_2', 'source_ns_3'])
+                         ['source_ns_1', 'source_ns_2', 'source_ns_3'])
         self.assertEqual(self.conf['namespaces.mapping'],
-                          {'source_ns_1': 'dest_ns_1',
-                           'source_ns_2': 'dest_ns_2',
-                           'source_ns_3': 'dest_ns_3'})
+                         {'source_ns_1': 'dest_ns_1',
+                          'source_ns_2': 'dest_ns_2',
+                          'source_ns_3': 'dest_ns_3'})
 
     def test_namespace_set_validation(self):
         # duplicate ns_set
@@ -181,93 +184,28 @@ class TestConfig(unittest.TestCase):
     def test_doc_managers_from_args(self):
         # Test basic docmanager construction from args
         args = {
-            "-d": "a,b",
-            "-t": "1,2",
-            '-u': "id",
-            '--auto-commit-interval': 10
+            '-d': "doc_manager_simulator",
+            "-t": "test_target_url",
+            "-u": "id",
+            "--auto-commit-interval": 10
         }
-        docManagers = [
-            {
-                'docManager': 'a',
-                'targetURL': '1',
-                'uniqueKey': 'id',
-                'autoCommitInterval': 10
-            },
-            {
-                'docManager': 'b',
-                'targetURL': '2',
-                'uniqueKey': 'id',
-                'autoCommitInterval': 10
-            }
-        ]
         self.load_options(args)
-        self.assertEqual(self.conf['docManagers'], docManagers);
+        self.assertEqual(len(self.conf['docManagers']), 1)
 
+        dm = self.conf['docManagers'][0]
+        self.assertTrue(isinstance(dm, doc_manager_simulator.DocManager))
+        self.assertEqual(dm.url, "test_target_url")
+        self.assertEqual(dm.unique_key, "id")
+        self.assertEqual(dm.auto_commit_interval, 10)
         self.reset_config()
 
-        # no doc_manager but target_urls
+        # no doc_manager but target_url
         args = {
             "-t": "1,2"
         }
         self.assertRaises(errors.InvalidConfiguration,
                           self.load_options, args)
-
         self.reset_config()
-
-        # fewer doc_managers than target_urls
-        args = {
-            "--docManager": "a",
-            "--target-url": "1,2"
-        }
-        docManagers = [
-            {
-                'docManager': 'a',
-                'targetURL': '1',
-                'uniqueKey': constants.DEFAULT_UNIQUE_KEY,
-                'autoCommitInterval': constants.DEFAULT_COMMIT_INTERVAL
-            },
-            {
-                'docManager': 'a',
-                'targetURL': '2',
-                'uniqueKey': constants.DEFAULT_UNIQUE_KEY,
-                'autoCommitInterval': constants.DEFAULT_COMMIT_INTERVAL
-            }
-        ]
-        self.load_options(args)
-        self.assertEqual(self.conf['docManagers'], docManagers);
-
-        self.reset_config()
-
-        # fewer target_urls than doc_managers
-        args = {
-            "--doc-managers": "a,b",
-            "--target-urls": "1"
-        }
-        docManagers = [
-            {
-                'docManager': 'a',
-                'targetURL': '1',
-                'uniqueKey': constants.DEFAULT_UNIQUE_KEY,
-                'autoCommitInterval': constants.DEFAULT_COMMIT_INTERVAL
-            },
-            {
-                'docManager': 'b',
-                'targetURL': None,
-                'uniqueKey': constants.DEFAULT_UNIQUE_KEY,
-                'autoCommitInterval': constants.DEFAULT_COMMIT_INTERVAL
-            }
-        ]
-        self.load_options(args)
-        self.assertEqual(self.conf['docManagers'], docManagers);
-
-        # don't reset doc managers
-
-        # Test that args can't overwrite docManager configurations
-        args = {
-            '-d': 'a',
-            '-t': '1'
-        }
-        self.assertRaises(errors.InvalidConfiguration, self.load_options, args)
 
     def test_config_validation(self):
         # can't log both to syslog and to logfile
@@ -298,7 +236,7 @@ class TestConfig(unittest.TestCase):
         test_config = {
             'docManagers': "hello"
         }
-        self.assertRaises(errors.InvalidConfiguration, 
+        self.assertRaises(errors.InvalidConfiguration,
                           self.load_json, test_config)
 
         # every element of docManagers must contain a 'docManager' property
@@ -309,7 +247,7 @@ class TestConfig(unittest.TestCase):
                 }
             ]
         }
-        self.assertRaises(errors.InvalidConfiguration, 
+        self.assertRaises(errors.InvalidConfiguration,
                           self.load_json, test_config)
 
         # auto commit interval can't be negative
@@ -321,5 +259,5 @@ class TestConfig(unittest.TestCase):
                 }
             ]
         }
-        self.assertRaises(errors.InvalidConfiguration, 
+        self.assertRaises(errors.InvalidConfiguration,
                           self.load_json, test_config)
