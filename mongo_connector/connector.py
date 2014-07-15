@@ -52,25 +52,25 @@ class Connector(threading.Thread):
 
         super(Connector, self).__init__()
 
-        #can_run is set to false when we join the thread
+        # can_run is set to false when we join the thread
         self.can_run = True
 
-        #The name of the file that stores the progress of the OplogThreads
+        # The name of the file that stores the progress of the OplogThreads
         self.oplog_checkpoint = oplog_checkpoint
 
-        #main address - either mongos for sharded setups or a primary otherwise
+        # main address - either mongos for sharded setups or a primary otherwise
         self.address = address
 
-        #The set of relevant namespaces to consider
+        # The set of relevant namespaces to consider
         self.ns_set = ns_set
 
-        #The dict of source namespace to destination namespace
+        # The dict of source namespace to destination namespace
         self.dest_mapping = dest_mapping
 
-        #Whether the collection dump gracefully handles exceptions
+        # Whether the collection dump gracefully handles exceptions
         self.continue_on_error = continue_on_error
 
-        #Password for authentication
+        # Password for authentication
         self.auth_key = auth_key
 
         # List of DocManager instances
@@ -79,74 +79,27 @@ class Connector(threading.Thread):
         else:
             self.doc_managers = (simulator.DocManager(),)
 
-        #Username for authentication
+        # Username for authentication
         self.auth_username = auth_username
 
-        #The set of OplogThreads created
+        # The set of OplogThreads created
         self.shard_set = {}
 
-        #Boolean chooses whether to dump the entire collection if no timestamp
+        # Boolean chooses whether to dump the entire collection if no timestamp
         # is present in the config file
         self.collection_dump = collection_dump
 
-        #Num entries to process before updating config file with current pos
+        # Num entries to process before updating config file with current pos
         self.batch_size = batch_size
 
-        #Dict of OplogThread/timestamp pairs to record progress
+        # Dict of OplogThread/timestamp pairs to record progress
         self.oplog_progress = LockingDict()
 
         # List of fields to export
         self.fields = fields
 
-        try:
-            docman_kwargs = {"namespace_set": ns_set}
-
-            # No doc managers specified, using simulator
-            if len(doc_manager_modules) == 0:
-                self.doc_managers = [simulator.DocManager(**docman_kwargs)]
-            else:
-                self.doc_managers = []
-                for i, d in enumerate(doc_manager_modules):
-
-                    # assign unique_key and auto_commit_interval
-                    # per document manager
-                    if isinstance(u_key, list):
-                        docman_kwargs['unique_key'] = u_key[i]
-                    else:
-                        docman_kwargs['unique_key'] = u_key
-
-                    if isinstance(auto_commit_interval, list):
-                        docman_kwargs[
-                            'auto_commit_interval'] = auto_commit_interval[i]
-                    else:
-                        docman_kwargs[
-                            'auto_commit_interval'] = auto_commit_interval
-
-                    # self.target_urls may be shorter than
-                    # self.doc_managers, or left as None
-                    if self.target_urls and i < len(self.target_urls):
-                        target_url = self.target_urls[i]
-                    else:
-                        target_url = None
-
-                    if target_url:
-                        self.doc_managers.append(
-                            d.DocManager(self.target_urls[i],
-                                         **docman_kwargs))
-                    else:
-                        self.doc_managers.append(
-                            d.DocManager(**docman_kwargs))
-                # If more target URLs were given than doc managers, may need
-                # to create additional doc managers
-                for url in self.target_urls[i + 1:]:
-                    self.doc_managers.append(
-                        doc_manager_modules[-1].DocManager(url,
-                                                           **docman_kwargs))
-        except errors.ConnectionFailed:
-            err_msg = "MongoConnector: Could not connect to target system"
-            logging.critical(err_msg)
-            self.can_run = False
-            return
+        # Doc Managers
+        self.doc_managers = doc_managers
 
         if self.oplog_checkpoint is not None:
             if not os.path.exists(self.oplog_checkpoint):
@@ -375,68 +328,6 @@ class Connector(threading.Thread):
         logging.info('MongoConnector: Stopping all OplogThreads')
         for thread in self.shard_set.values():
             thread.join()
-
-def create_doc_managers(names=None, urls=None, unique_key="_id",
-                        auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL,
-                        ns_set=None):
-    """Create a list of DocManager instances."""
-    # Get DocManagers and target URLs
-    # Each DocManager is assigned the respective (same-index) target URL
-    # Additional DocManagers may be specified that take no target URL
-    doc_manager_classes = []
-    if names is not None:
-        doc_manager_names = names.split(",")
-        for name in doc_manager_names:
-            try:
-                full_name = "mongo_connector.doc_managers.%s" % name
-                # importlib doesn't exist in 2.6, but __import__ is everywhere
-                module = __import__(full_name, fromlist=(name,))
-                dm_impl = module.DocManager
-                if not issubclass(dm_impl, DocManagerBase):
-                    raise TypeError("DocManager must inherit DocManagerBase.")
-                doc_manager_classes.append(module.DocManager)
-            except ImportError:
-                LOG.exception("Could not import %s." % full_name)
-                sys.exit(1)
-            except (AttributeError, TypeError):
-                LOG.exception("No definition for DocManager found in %s."
-                              % full_name)
-                sys.exit(1)
-    else:
-        LOG.info('No doc managers specified, using simulator.')
-
-    target_urls = urls.split(",") if urls else None
-
-    doc_managers = []
-    if names is not None:
-        # Instantiate DocManagers with correct arguments
-        docman_kwargs = {"unique_key": unique_key,
-                         "namespace_set": ns_set,
-                         "auto_commit_interval": auto_commit_interval}
-        for dm, url in zip_longest(doc_manager_classes, target_urls or []):
-            # If more target URLs were given than doc managers, may need to
-            # create additional doc managers
-            if not dm:
-                dm = doc_manager_classes[-1]
-            # target_urls may be shorter than self.doc_managers, or left as None
-            if url:
-                doc_managers.append(dm(url, **docman_kwargs))
-            else:
-                try:
-                    doc_managers.append(dm(**docman_kwargs))
-                except TypeError:
-                    LOG.exception("DocManager %s requires a target URL."
-                                  % dm.__module__)
-                    sys.exit(1)
-    elif target_urls is not None:
-        LOG.error("Cannot create a Connector with a "
-                  "target URL but no doc manager!")
-        sys.exit(1)
-    else:
-        LOG.info("No DocManagers were specified. Using simulator.")
-        doc_managers.append(simulator.DocManager(**docman_kwargs))
-    return doc_managers
-
 
 def main():
     """ Starts the mongo connector (assuming CLI)
@@ -701,72 +592,89 @@ def get_config_options():
         "for mongo-to-mongo connections.")
 
     def apply_doc_managers(option, cli_values):
-        unique_key = cli_values['unique_key'] or constants.DEFAULT_UNIQUE_KEY
-        auto_commit_interval = (cli_values['auto_commit_interval']
-                                or constants.DEFAULT_COMMIT_INTERVAL)
-
-        if cli_values['doc_managers'] == None:
-            if cli_values['target_urls']:
+        if cli_values['doc_manager'] is None:
+            if cli_values['target_url']:
                 raise errors.InvalidConfiguration(
                     "Cannot create a Connector with a target URL"
                     " but no doc manager.")
-
         else:
-            if option.value:
+            option.value = [{
+                'docManager': cli_values['doc_manager'],
+                'targetURL': cli_values['target_url'],
+                'uniqueKey': cli_values['unique_key'],
+                'autoCommitInterval': cli_values['auto_commit_interval']
+            }]
+
+        if not option.value:
+            LOG.info('No doc managers specified, using simulator.')
+            option.value = [{
+                'docManager': 'doc_manager_simulator'
+            }]
+
+        # validate doc managers and fill in default values
+        for dm in option.value:
+            if not isinstance(dm, dict):
                 raise errors.InvalidConfiguration(
-                    "Doc Managers settings in the configuration file"
-                    " cannot be overwritten by command line arguments.")
+                    "Elements of docManagers must be a dict.")
+            if 'docManager' not in dm:
+                raise errors.InvalidConfiguration(
+                    "Every element of docManagers"
+                    " must contain 'docManager' property.")
+            if not dm.get('targetURL'):
+                dm['targetURL'] = None
+            if not dm.get('uniqueKey'):
+                dm['uniqueKey'] = constants.DEFAULT_UNIQUE_KEY
+            if not dm.get('autoCommitInterval'):
+                dm['autoCommitInterval'] = constants.DEFAULT_COMMIT_INTERVAL
+            if not dm.get('args'):
+                dm['args'] = {}
 
-            option.value = []
-            doc_managers = cli_values['doc_managers'].split(',')
+            if dm['autoCommitInterval'] and dm['autoCommitInterval'] < 0:
+                raise errors.InvalidConfiguration(
+                    "autoCommitInterval must be non-negative.")
 
-            target_urls = []
-            if cli_values['target_urls']:
-                target_urls = cli_values['target_urls'].split(',')
+        def import_dm_by_name(name):
+            try:
+                full_name = "mongo_connector.doc_managers.%s" % name
+                # importlib doesn't exist in 2.6, but __import__ is everywhere
+                module = __import__(full_name, fromlist=(name,))
+                dm_impl = module.DocManager
+                if not issubclass(dm_impl, DocManagerBase):
+                    raise TypeError("DocManager must inherit DocManagerBase.")
+                return module
+            except ImportError:
+                LOG.exception("Could not import %s." % full_name)
+                sys.exit(1)
+            except (AttributeError, TypeError):
+                LOG.exception("No definition for DocManager found in %s."
+                              % full_name)
+                sys.exit(1)
 
-            # target_urls may be shorter than doc_managers
-            for i, d in enumerate(doc_managers):
-                doc_manager = {'docManager': d}
-                if i < len(target_urls):
-                    doc_manager['targetURL'] = target_urls[i]
-                else:
-                    doc_manager['targetURL'] = None
-                option.value.append(doc_manager)
+        dm_instances = []
+        for dm in option.value:
+            module = import_dm_by_name(dm['docManager'])
+            kwargs = {
+                'unique_key': dm['uniqueKey'],
+                'auto_commit_interval': dm['autoCommitInterval']
+            }
+            for k in dm['args']:
+                if k not in kwargs:
+                    kwargs[k] = dm['args'][k]
 
-            # If more target URLS were given than doc managers, may
-            # need to create additional doc managers
-            for target_url in target_urls[len(doc_managers):]:
-                doc_manager = {'docManager': doc_managers[-1]}
-                doc_manager['targetURL'] = target_url
-                option.value.append(doc_manager)
+            target_url = dm['targetURL']
+            if target_url:
+                dm_instances.append(module.DocManager(target_url, **kwargs))
+            else:
+                dm_instances.append(module.DocManager(**kwargs))
 
-        # validate doc managers
-        if option.value:
-            for dm in option.value:
-                if not isinstance(dm, dict):
-                    raise errors.InvalidConfiguration(
-                        "Elements of docManagers must be a dict.")
-                if 'docManager' not in dm:
-                    raise errors.InvalidConfiguration(
-                        "Every element of docManagers"
-                        " must contain 'docManager' property.")
-                if 'targetURL' not in dm:
-                    dm['targetURL'] = None
-                if 'unique_key' not in dm:
-                    dm['uniqueKey'] = unique_key
-                if 'autoCommitInterval' not in dm:
-                    dm['autoCommitInterval'] = auto_commit_interval
-
-                if dm['autoCommitInterval'] and dm['autoCommitInterval'] < 0:
-                    raise errors.InvalidConfiguration(
-                        "autoCommitInterval must be non-negative.")
+        option.value = dm_instances
 
     doc_managers = add_option("docManagers", None, apply_doc_managers)
     doc_managers.set_type(list)
 
-    #-d is to specify the doc manager file.
+    # -d is to specify the doc manager file.
     doc_managers.add_cli(
-        "-d", "--docManager", "--doc-managers", dest="doc_managers", help=
+        "-d", "--doc-manager", dest="doc_manager", help=
         "Used to specify the path to each doc manager "
         "file that will be used. DocManagers should be "
         "specified in the same order as their respective "
@@ -784,10 +692,10 @@ def get_config_options():
         "manager, see 'Writing Your Own DocManager' "
         "section of the wiki")
 
-    #-d is to specify the doc manager file.
+    # -d is to specify the doc manager file.
     doc_managers.add_cli(
-        "-t", "--target-url", "--target-urls",
-        dest="target_urls", help=
+        "-t", "--target-url",
+        dest="target_url", help=
         "Specify the URL to each target system being "
         "used. For example, if you were using Solr out of "
         "the box, you could use '-t "
@@ -803,8 +711,8 @@ def get_config_options():
         "specified. "
         "Don't use quotes around addresses. ")
 
-    #-u is to specify the mongoDB field that will serve as the unique key
-    #for the target system,
+    # -u is to specify the mongoDB field that will serve as the unique key
+    # for the target system,
     doc_managers.add_cli(
         "-u", "--unique-key", dest="unique_key", help=
         "The name of the MongoDB field that will serve "
@@ -813,7 +721,7 @@ def get_config_options():
         "when targeting another MongoDB cluster. "
         "Defaults to \"_id\".")
 
-    #--auto-commit-interval to specify auto commit time interval
+    # --auto-commit-interval to specify auto commit time interval
     doc_managers.add_cli(
         "--auto-commit-interval", type="int",
         dest="auto_commit_interval", help=
@@ -826,8 +734,8 @@ def get_config_options():
         " interval, which should be preferred to this"
         " option.")
 
-    #--continue-on-error to continue to upsert documents during a collection
-    #dump, even if the documents cannot be inserted for some reason
+    # --continue-on-error to continue to upsert documents during a collection
+    # dump, even if the documents cannot be inserted for some reason
     continue_on_error = add_option("continueOnError", False)
     continue_on_error.set_type(bool)
     continue_on_error.add_cli(
@@ -842,7 +750,7 @@ def get_config_options():
         " set of documents due to errors may cause undefined"
         " behavior. Use this flag to dump only.")
 
-    #-c to load a config file
+    # -c to load a config file
     config_file = add_option()
     config_file.add_cli(
         "-c", "--config-file", dest="config_file", help=
@@ -857,6 +765,7 @@ def main():
     conf = config.Config(get_config_options())
     conf.parse_args()
 
+    # PRINT THE CONFIGURATION
     def filter_dunder_keys(x):
         if isinstance(x, list):
             return [filter_dunder_keys(c) for c in x]
@@ -905,49 +814,31 @@ def main():
 
     logger.info('Beginning Mongo Connector')
 
-    if conf['docManagers']:
-        doc_managers = [dm['docManager'] for dm in conf['docManagers']]
-        target_urls = [dm['targetURL'] for dm in conf['docManagers']]
-        unique_keys = [dm.get('uniqueKey') for dm in conf['docManagers']]
-        auto_commit_intervals = [dm.get('autoCommitInterval')
-                                 for dm in conf['docManagers']]
-    else:
-        doc_managers = []
-        target_urls = []
-        unique_keys = constants.DEFAULT_UNIQUE_KEY
-        auto_commit_intervals = constants.DEFAULT_COMMIT_INTERVAL
-
-    if len(doc_managers) == 0:
-        logger.info('No doc managers specified, using simulator.')
-
-    key = None
+    auth_key = None
     password_file = conf['authentication.passwordFile']
     if password_file is not None:
         try:
-            key = open(conf['passwordFile']).read()
-            key = re.sub(r'\s', '', key)
+            auth_key = open(conf['passwordFile']).read()
+            auth_key = re.sub(r'\s', '', auth_key)
         except IOError:
             LOG.error('Could not parse password authentication file!')
             sys.exit(1)
     password = conf['authentication.password']
     if password is not None:
-        key = password
+        auth_key = password
 
     connector = Connector(
         address=conf['mainAddress'],
         oplog_checkpoint=conf['oplogFile'],
-        target_url=target_urls,
-        ns_set=conf['namespaces.include'],
-        u_key=unique_keys,
-        auth_key=key,
-        doc_manager=doc_managers,
-        auth_username=conf['authentication.adminUsername'],
         collection_dump=(not conf['noDump']),
         batch_size=conf['batchSize'],
+        continue_on_error=conf['continueOnError'],
+        auth_username=conf['authentication.adminUsername'],
+        auth_key=auth_key,
         fields=conf['fields'],
+        ns_set=conf['namespaces.include'],
         dest_mapping=conf['namespaces.mapping'],
-        auto_commit_interval=auto_commit_intervals,
-        continue_on_error=conf['continueOnError']
+        doc_managers=conf['docManagers'],
     )
     connector.start()
 

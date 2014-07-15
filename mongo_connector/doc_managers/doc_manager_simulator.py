@@ -36,11 +36,16 @@ class DocManager(DocManagerBase):
     multiple, slightly different versions of a doc.
     """
 
-    def __init__(self, url=None, unique_key='_id', **kwargs):
+    def __init__(self, url=None, unique_key='_id',
+                 auto_commit_interval=None, **kwargs):
         """Creates a dictionary to hold document id keys mapped to the
         documents as values.
         """
+        print("url: %s" % url)
+        print("unique_key: %s" % unique_key)
+        print("commit_interval: %s" % auto_commit_interval)
         self.unique_key = unique_key
+        self.auto_commit_interval = auto_commit_interval
         self.doc_dict = {}
         self.url = url
 
