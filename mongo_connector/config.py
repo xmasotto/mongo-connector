@@ -20,32 +20,34 @@ import sys
 from mongo_connector import compat, constants, errors
 from mongo_connector.compat import reraise
 
+
 def default_apply_function(option, cli_values):
     first_value = list(cli_values.values())[0]
     if first_value is not None:
         option.value = first_value
 
+
 class Option(object):
-    def __init__(self, config_key=None, default=None,
+    def __init__(self, config_key=None, default=None, type=None,
                  apply_function=default_apply_function):
         self.config_key = config_key
         self.value = default
+        self.type = type
         self.apply_function = apply_function
 
         self.cli_names = []
         self.cli_options = []
-        self.option_type = None
-        self.validate_type = lambda x:True
 
-    def set_type(self, option_type):
-        self.option_type = option_type
-        if option_type == str:
-            self.validate_type = compat.is_string
+    def validate_type(self):
+        if self.type == str:
+            return compat.is_string(self.value)
         else:
-            self.validate_type = lambda x:isinstance(x,option_type)
+            return isinstance(self.value,
+                              self.type)
 
     def add_cli(self, *args, **kwargs):
-        self.cli_options.append( (args, kwargs) )
+        self.cli_options.append((args, kwargs))
+
 
 class Config(object):
     def __init__(self, options):
@@ -101,11 +103,11 @@ class Config(object):
                     option.value = parsed_config[k]
 
                 # type check
-                if not option.validate_type(option.value):
+                if not option.validate_type():
                     raise errors.InvalidConfiguration(
                         "%s should have %r, %r was given!" %
                         (option.config_key,
-                         option.option_type,
+                         option.type,
                          type(option.value)))
             else:
                 if not k.startswith("__"):

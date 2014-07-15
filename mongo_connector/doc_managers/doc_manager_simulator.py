@@ -41,9 +41,6 @@ class DocManager(DocManagerBase):
         """Creates a dictionary to hold document id keys mapped to the
         documents as values.
         """
-        print("url: %s" % url)
-        print("unique_key: %s" % unique_key)
-        print("commit_interval: %s" % auto_commit_interval)
         self.unique_key = unique_key
         self.auto_commit_interval = auto_commit_interval
         self.doc_dict = {}

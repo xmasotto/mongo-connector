@@ -77,6 +77,7 @@ class Connector(threading.Thread):
         if doc_managers:
             self.doc_managers = doc_managers
         else:
+            LOG.info('No doc managers specified, using simulator.')
             self.doc_managers = (simulator.DocManager(),)
 
         # Username for authentication
@@ -329,11 +330,6 @@ class Connector(threading.Thread):
         for thread in self.shard_set.values():
             thread.join()
 
-def main():
-    """ Starts the mongo connector (assuming CLI)
-    """
-    parser = optparse.OptionParser()
-
 def get_config_options():
     result = []
 
@@ -342,10 +338,13 @@ def get_config_options():
         result.append(opt)
         return opt
 
-    #-m is for the main address, which is a host:port pair, ideally of the
-    #mongos. For non sharded clusters, it can be the primary.
-    main_address = add_option("mainAddress", "localhost:27017")
-    main_address.set_type(str)
+    main_address = add_option(
+        config_key="mainAddress",
+        default="localhost:27017",
+        type=str)
+
+    # -m is for the main address, which is a host:port pair, ideally of the
+    # mongos. For non sharded clusters, it can be the primary.
     main_address.add_cli(
         "-m", "--main", dest="main_address", help=
         "Specify the main address, which is a"
@@ -356,11 +355,14 @@ def get_config_options():
         " would be a valid argument to `-m`. Don't use"
         " quotes around the address.")
 
-    #-o is to specify the oplog-config file. This file is used by the system
-    #to store the last timestamp read on a specific oplog. This allows for
-    #quick recovery from failure.
-    oplog_file = add_option("oplogFile", "oplog.timestamp")
-    oplog_file.set_type(str)
+    oplog_file = add_option(
+        config_key="oplogFile",
+        default="oplog.timestamp",
+        type=str)
+
+    # -o is to specify the oplog-config file. This file is used by the system
+    # to store the last timestamp read on a specific oplog. This allows for
+    # quick recovery from failure.
     oplog_file.add_cli(
         "-o", "--oplog-ts", dest="oplog_file", help=
         "Specify the name of the file that stores the "
@@ -376,20 +378,26 @@ def get_config_options():
         "the connector will miss some documents and behave "
         "incorrectly.")
 
-    #--no-dump specifies whether we should read an entire collection from
-    #scratch if no timestamp is found in the oplog_config.
-    no_dump = add_option("noDump", False)
-    no_dump.set_type(bool)
+    no_dump = add_option(
+        config_key="noDump",
+        default=False,
+        type=bool)
+
+    # --no-dump specifies whether we should read an entire collection from
+    # scratch if no timestamp is found in the oplog_config.
     no_dump.add_cli(
         "--no-dump", action="store_true", dest="no_dump", help=
         "If specified, this flag will ensure that "
         "mongo_connector won't read the entire contents of a "
         "namespace iff --oplog-ts points to an empty file.")
 
-    #--batch-size specifies num docs to read from oplog before updating the
-    #--oplog-ts config file with current oplog position
-    batch_size = add_option("batchSize", constants.DEFAULT_BATCH_SIZE)
-    batch_size.set_type(int)
+    batch_size = add_option(
+        config_key="batchSize",
+        default=constants.DEFAULT_BATCH_SIZE,
+        type=int)
+
+    # --batch-size specifies num docs to read from oplog before updating the
+    # --oplog-ts config file with current oplog position
     batch_size.add_cli(
         "--batch-size", type="int", dest="batch_size", help=
         "Specify an int to update the --oplog-ts "
@@ -405,9 +413,13 @@ def get_config_options():
         if option.value < 0:
             raise errors.InvalidConfiguration("verbosity must be non-negative.")
 
-    #-v enables verbose logging
-    verbosity = add_option("verbosity", 0, apply_verbosity)
-    verbosity.set_type(int)
+    verbosity = add_option(
+        config_key="verbosity",
+        default=0,
+        type=int,
+        apply_function=apply_verbosity)
+
+    # -v enables verbose logging
     verbosity.add_cli(
         "-v", "--verbose", action="store_true",
         dest="verbose", help=
@@ -437,29 +449,32 @@ def get_config_options():
         'facility': constants.DEFAULT_SYSLOG_FACILITY
     }
 
-    logging = add_option("logging", default_logging, apply_logging)
-    logging.set_type(dict)
+    logging = add_option(
+        config_key="logging",
+        default=default_logging,
+        type=dict,
+        apply_function=apply_logging)
 
-    #-w enable logging to a file
+    # -w enable logging to a file
     logging.add_cli(
         "-w", "--logfile", dest="logfile", help=
         "Log all output to a file rather than stream to "
         "stderr. Omit to stream to stderr.")
 
-    #-s is to enable syslog logging.
+    # -s is to enable syslog logging.
     logging.add_cli(
         "-s", "--enable-syslog", action="store_true",
         dest="enable_syslog", help=
         "Used to enable logging to syslog."
         " Use -l to specify syslog host.")
 
-    #--syslog-host is to specify the syslog host.
+    # --syslog-host is to specify the syslog host.
     logging.add_cli(
         "--syslog-host", dest="syslog_host", help=
         "Used to specify the syslog host."
         " The default is 'localhost:514'")
 
-    #--syslog-facility is to specify the syslog facility.
+    # --syslog-facility is to specify the syslog facility.
     logging.add_cli(
         "--syslog-facility", dest="syslog_facility", help=
         "Used to specify the syslog facility."
@@ -491,18 +506,20 @@ def get_config_options():
         'passwordFile': None
     }
 
-    authentication = add_option("authentication",
-                                default_authentication, apply_authentication)
-    authentication.set_type(dict)
+    authentication = add_option(
+        config_key="authentication",
+        default=default_authentication,
+        type=dict,
+        apply_function=apply_authentication)
 
-    #-a is to specify the username for authentication.
+    # -a is to specify the username for authentication.
     authentication.add_cli(
         "-a", "--admin-username", dest="admin_username", help=
         "Used to specify the username of an admin user to "
         "authenticate with. To use authentication, the user "
         "must specify both an admin username and a keyFile.")
 
-    #-p is to specify the password used for authentication.
+    # -p is to specify the password used for authentication.
     authentication.add_cli(
         "-p", "--password", dest="password", help=
         "Used to specify the password."
@@ -511,9 +528,9 @@ def get_config_options():
         " oplog threads. If authentication is not used, then"
         " this field can be left empty as the default ")
 
-    #-f is to specify the authentication key file. This file is used by mongos
-    #to authenticate connections to the shards, and we'll use it in the oplog
-    #threads.
+    # -f is to specify the authentication key file. This file is used by mongos
+    # to authenticate connections to the shards, and we'll use it in the oplog
+    # threads.
     authentication.add_cli(
         "-f", "--password-file", dest="password_file", help=
         "Used to store the password for authentication."
@@ -526,10 +543,13 @@ def get_config_options():
         if cli_values['fields']:
             option.value = cli_values['fields'].split(",")
 
-    fields = add_option("fields", [], apply_fields)
-    fields.set_type(list)
+    fields = add_option(
+        config_key="fields",
+        default=[],
+        type=list,
+        apply_function=apply_fields)
 
-    #-i to specify the list of fields to export
+    # -i to specify the list of fields to export
     fields.add_cli(
         "-i", "--fields", dest="fields", help=
         "Used to specify the list of fields to export. "
@@ -564,11 +584,14 @@ def get_config_options():
         "mapping": {}
     }
 
-    namespaces = add_option("namespaces", default_namespaces, apply_namespaces)
-    namespaces.set_type(dict)
+    namespaces = add_option(
+        config_key="namespaces",
+        default=default_namespaces,
+        type=dict,
+        apply_function=apply_namespaces)
 
-    #-n is to specify the namespaces we want to consider. The default
-    #considers all the namespaces
+    # -n is to specify the namespaces we want to consider. The default
+    # considers all the namespaces
     namespaces.add_cli(
         "-n", "--namespace-set", dest="ns_set", help=
         "Used to specify the namespaces we want to "
@@ -580,7 +603,7 @@ def get_config_options():
         "also ignoring the \"system.indexes\" collection in "
         "any database.")
 
-    #-g is the destination namespace
+    # -g is the destination namespace
     namespaces.add_cli(
         "-g", "--dest-namespace-set", dest="dest_ns_set", help=
         "Specify a destination namespace mapping. Each "
@@ -606,10 +629,7 @@ def get_config_options():
             }]
 
         if not option.value:
-            LOG.info('No doc managers specified, using simulator.')
-            option.value = [{
-                'docManager': 'doc_manager_simulator'
-            }]
+            return
 
         # validate doc managers and fill in default values
         for dm in option.value:
@@ -643,13 +663,15 @@ def get_config_options():
                     raise TypeError("DocManager must inherit DocManagerBase.")
                 return module
             except ImportError:
-                LOG.exception("Could not import %s." % full_name)
+                raise errors.InvalidConfiguration(
+                    "Could not import %s." % full_name)
                 sys.exit(1)
             except (AttributeError, TypeError):
-                LOG.exception("No definition for DocManager found in %s."
-                              % full_name)
+                raise errors.InvalidConfiguration(
+                    "No definition for DocManager found in %s." % full_name)
                 sys.exit(1)
 
+        # instantiate the doc manager objects
         dm_instances = []
         for dm in option.value:
             module = import_dm_by_name(dm['docManager'])
@@ -669,8 +691,11 @@ def get_config_options():
 
         option.value = dm_instances
 
-    doc_managers = add_option("docManagers", None, apply_doc_managers)
-    doc_managers.set_type(list)
+    doc_managers = add_option(
+        config_key="docManagers",
+        default=None,
+        type=list,
+        apply_function=apply_doc_managers)
 
     # -d is to specify the doc manager file.
     doc_managers.add_cli(
@@ -734,10 +759,13 @@ def get_config_options():
         " interval, which should be preferred to this"
         " option.")
 
+    continue_on_error = add_option(
+        config_key="continueOnError",
+        default=False,
+        type=bool)
+
     # --continue-on-error to continue to upsert documents during a collection
     # dump, even if the documents cannot be inserted for some reason
-    continue_on_error = add_option("continueOnError", False)
-    continue_on_error.set_type(bool)
     continue_on_error.add_cli(
         "--continue-on-error", action="store_true",
         dest="continue_on_error", help=
@@ -750,7 +778,6 @@ def get_config_options():
         " set of documents due to errors may cause undefined"
         " behavior. Use this flag to dump only.")
 
-    # -c to load a config file
     config_file = add_option()
     config_file.add_cli(
         "-c", "--config-file", dest="config_file", help=
@@ -759,42 +786,22 @@ def get_config_options():
 
     return result
 
+
 def main():
     """ Starts the mongo connector (assuming CLI)
     """
     conf = config.Config(get_config_options())
     conf.parse_args()
 
-    # PRINT THE CONFIGURATION
-    def filter_dunder_keys(x):
-        if isinstance(x, list):
-            return [filter_dunder_keys(c) for c in x]
-        elif isinstance(x, dict):
-            result = {}
-            for k in x:
-                if not k.startswith('__'):
-                    result[k] = filter_dunder_keys(x[k])
-            return result
-        else:
-            return x
-
-    print("Loading Mongo Connector with the following configuration:")
-    pp = pprint.PrettyPrinter(indent=4)
-    config_dict = dict(
-        (opt.config_key, opt.value) for opt in conf.options if opt.config_key)
-    pp.pprint(filter_dunder_keys(config_dict))
-    print("")
-
-    logger = logging.getLogger()
     loglevel = logging.DEBUG if conf['verbosity'] > 0 else logging.INFO
-    logger.setLevel(loglevel)
+    LOG.setLevel(loglevel)
 
     if conf['logging.type'] == 'file':
         log_out = logging.FileHandler(conf['logging.filename'])
         log_out.setLevel(loglevel)
         log_out.setFormatter(logging.Formatter(
             '%(asctime)s - %(levelname)s - %(message)s'))
-        logger.addHandler(log_out)
+        LOG.addHandler(log_out)
 
     if conf['logging.type'] == 'syslog':
         syslog_info = conf['logging.host'].split(":")
@@ -803,7 +810,7 @@ def main():
             facility=conf['logging.facility']
         )
         syslog_host.setLevel(loglevel)
-        logger.addHandler(syslog_host)
+        LOG.addHandler(syslog_host)
 
     if conf['logging.type'] is None:
         log_out = logging.StreamHandler()
@@ -812,7 +819,7 @@ def main():
             '%(asctime)s - %(levelname)s - %(message)s'))
         LOG.addHandler(log_out)
 
-    logger.info('Beginning Mongo Connector')
+    LOG.info('Beginning Mongo Connector')
 
     auth_key = None
     password_file = conf['authentication.passwordFile']
@@ -821,7 +828,7 @@ def main():
             auth_key = open(conf['passwordFile']).read()
             auth_key = re.sub(r'\s', '', auth_key)
         except IOError:
-            LOG.error('Could not parse password authentication file!')
+            LOG.error('Could not load password file!')
             sys.exit(1)
     password = conf['authentication.password']
     if password is not None:
