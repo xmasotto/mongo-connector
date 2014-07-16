@@ -221,6 +221,14 @@ class OplogThread(threading.Thread):
                                     # 'o' field contains the update spec
                                     docman.update(doc, entry.get('o', {}))
                                     update_inc += 1
+                                # Command
+                                elif operation == 'c':
+                                    doc = entry.get('o')
+                                    doc['_ts'] = util.bson_ts_to_long(
+                                        entry['ts'])
+                                    doc['ns'] = ns
+                                    docman.handle_command(doc)
+                                    pass
                             except errors.OperationFailed:
                                 logging.exception(
                                     "Unable to process oplog document %r"

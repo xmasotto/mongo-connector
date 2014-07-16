@@ -358,11 +358,11 @@ def create_doc_managers(names=None, urls=None, unique_key="_id",
     target_urls = urls.split(",") if urls else None
 
     doc_managers = []
+    docman_kwargs = {"unique_key": unique_key,
+                     "namespace_set": ns_set,
+                     "auto_commit_interval": auto_commit_interval}
     if names is not None:
         # Instantiate DocManagers with correct arguments
-        docman_kwargs = {"unique_key": unique_key,
-                         "namespace_set": ns_set,
-                         "auto_commit_interval": auto_commit_interval}
         for dm, url in zip_longest(doc_manager_classes, target_urls or []):
             # If more target URLs were given than doc managers, may need to
             # create additional doc managers

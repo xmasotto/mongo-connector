@@ -11,10 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 import sys
 
 from mongo_connector.compat import reraise
-from mongo_connector.errors import UpdateDoesNotApply
+from mongo_connector.errors import OperationFailed, UpdateDoesNotApply
 
 
 def exception_wrapper(mapping):
@@ -100,6 +101,28 @@ class DocManagerBase(object):
                         exc_tb)
             return doc
 
+    def handle_command(self, doc):
+        db, coll = doc['ns'].split('.', 1)
+        if coll != "$cmd":
+            raise OperationFailed("Invalid Oplog Command")
+
+        if db == 'admin':
+            if doc.get('renameCollection'):
+                if doc['dropTarget']:
+                    self.drop_collection(doc['to'])
+                self.rename_collection(
+                    doc['renameCollection'],
+                    doc['to'])
+        else:
+            if doc.get('dropDatabase'):
+                self.drop_database(db)
+
+            if doc.get('create'):
+                self.create_collection(db + '.' + doc['create'])
+
+            if doc.get('drop'):
+                self.drop_collection(db + '.' + doc['drop'])
+
     def bulk_upsert(self, docs):
         """Upsert each document in a set of documents.
 
@@ -145,3 +168,27 @@ class DocManagerBase(object):
     def stop(self):
         """Stop all threads started by this DocManager."""
         raise NotImplementedError
+
+    def create_collection(self, ns):
+        """Explicitly create a collection with the given namespace."""
+        print("create_collection " + ns)
+        logging.warning("%r does not support replication of the"
+                        " 'create_collection' command." % type(self).__name__)
+
+    def rename_collection(self, old_ns, new_ns):
+        """Rename a collection."""
+        print("rename_collection " + old_ns + " -> " + new_ns)
+        logging.warning("%r does not support replication of the"
+                        " 'rename_collection' command." % type(self).__name__)
+
+    def drop_collection(self, ns):
+        """Drop a collection"""
+        print("drop_collection " + ns)
+        logging.warning("%r does not support replication of the"
+                        " 'drop_collection' command." % type(self).__name__)
+
+    def drop_database(self, db):
+        """Drop a database"""
+        print("drop_database " + ns)
+        logging.warning("%r does not support replication of the"
+                        " 'drop_database' command." % type(self).__name__)
