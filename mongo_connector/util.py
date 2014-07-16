@@ -55,7 +55,7 @@ def retry_until_ok(func, *args, **kwargs):
         except:
             count += 1
             if count > 60:
-                LOG.error('Call to %s failed too many times in '
-                          'retry_until_ok', func)
+                LOG.exception('Call to %s failed too many times in '
+                              'retry_until_ok', func)
                 raise
             time.sleep(1)

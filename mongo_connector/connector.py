@@ -35,7 +35,7 @@ from mongo_connector.doc_managers import (
 
 from pymongo import MongoClient
 
-LOG = logging.getLogger("mongo_connector.connector")
+LOG = logging.getLogger(__name__)
 
 
 class Connector(threading.Thread):
@@ -284,7 +284,7 @@ class Connector(threading.Thread):
                         repl_set, hosts = shard_doc['host'].split('/')
                     except ValueError:
                         cause = "The system only uses replica sets!"
-                        LOG.error("MongoConnector: %s", cause)
+                        LOG.exception("MongoConnector: %s", cause)
                         self.oplog_thread_join()
                         for dm in self.doc_managers:
                             dm.stop()
@@ -677,7 +677,7 @@ def main():
             key = open(options.auth_file).read()
             re.sub(r'\s', '', key)
         except IOError:
-            LOG.error('Could not parse password authentication file!')
+            LOG.exception('Could not parse password authentication file!')
             sys.exit(1)
 
     if options.password is not None:

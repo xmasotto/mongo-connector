@@ -732,9 +732,8 @@ class OplogThread(threading.Thread):
                         dm.upsert(doc)
                     except errors.OperationFailed as e:
                         fail_insert_inc += 1
-                        LOG.error("OplogThread: Rollback, Unable to "
-                                  "insert %s with exception %s"
-                                  % (doc, str(e)))
+                        LOG.exception("OplogThread: Rollback, Unable to "
+                                      "insert %s" % doc)
 
         LOG.debug("OplogThread: Rollback, Successfully inserted %d "
                   " documents and failed to insert %d"
