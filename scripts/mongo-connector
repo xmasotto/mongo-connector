@@ -10,37 +10,57 @@
 # Provides: mongo-connector
 # Default-Start: 3 4 5
 # Default-Stop: 0 1 6
+# Required-Start:
+# Required-Stop:
 # Short-Description: Start up Mongo Connector
 # Description: Mongo Connector replicates data from MongoDB to external
 #              database systems.
 ### END INIT INFO
 
 # source function library
-. /etc/rc.d/init.d/functions
+DEBIAN=
+if [ -f /lib/lsb/init-functions ]; then
+    DEBIAN=1
+    . /lib/lsb/init-functions
+else
+    . /etc/rc.d/init.d/functions
+fi
 
 RETVAL=0
-lockfile=/var/lock/subsys/mongo-connector
-pidfile=/var/run/mongo-connector.pid
 
-mc="nohup python -m mongo_connector.connector \
-    -c /etc/mongo-connector.json &>/dev/null & \
+pidfile=/var/run/mongo-connector.pid
+config=/etc/mongo-connector.json
+stdout=/var/log/mongo-connector/stdout
+stderr=/var/log/mongo-connector/stderr
+
+mc="/usr/bin/python -m mongo_connector.connector \
+    -c $config 1> $stdout 2> $stderr & \
     echo "'$!'" > $pidfile"
 
 start()
 {
-    action "starting mongo-connector: " daemon --pidfile $pidfile $mc
+    echo "starting mongo-connector "
+    if [ "$DEBIAN" ]; then
+	/sbin/start-stop-daemon --start --exec /bin/sh -p $pidfile -- -c "$mc"
+    else
+	daemon --pidfile $pidfile "$mc"
+    fi
+
     RETVAL=$?
     if [ $RETVAL -eq 0 ]; then
         echo "done."
     else
         echo "failed. Please check exit code and logs for more information"
     fi
+
     return $RETVAL
 }
 
 stop()
 {
-    action "stopping mongo-connector: " killproc -p $pidfile
+    echo "stopping mongo-connector: "
+    killproc -p $pidfile
+
     RETVAL=$?
     if [ $RETVAL -eq 0 ]; then
         echo "done."
@@ -56,6 +76,15 @@ restart() {
     $0 start
 }
 
+check_status() {
+    if [ "$DEBIAN" ]; then
+	echo -n "mongo-connector "
+	status_of_proc -p $pidfile mongo-connector
+    else
+	status -p $pidfile mongo-connector
+    fi
+}
+
 case "$1" in
     start)
         start
@@ -67,7 +96,7 @@ case "$1" in
         restart
         ;;
     status)
-        status -p $pidfile mongo-connector
+	check_status
         ;;
     *)
         echo $"Usage: $0 {start|stop|restart|status}"
