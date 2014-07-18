@@ -91,10 +91,6 @@ class OplogThread(threading.Thread):
             ns.split('.', 1)[0] + '.$cmd' for ns in self.namespace_set))
         if self.oplog_ns_set:
             self.oplog_ns_set.append("admin.$cmd")
-            # grab no op commands
-            self.oplog_ns_set.append("")
-
-        LOG.error(self.oplog_ns_set)
 
         #The dict of source namespaces to destination namespaces
         self.dest_mapping = dest_mapping
@@ -347,7 +343,7 @@ class OplogThread(threading.Thread):
                 if to_ns is None:
                     # Since the to_ns is not replicated, we can just drop it
                     to_db, to_coll = to_ns.split('.', 1)
-                    self.apply_command(dm, {
+                    return self.apply_command(dm, {
                         'db': to_db,
                         'drop': to_coll
                     })
@@ -356,7 +352,7 @@ class OplogThread(threading.Thread):
         else:
             if doc.get('dropDatabase'):
                 if not self.dest_mapping:
-                    dm.handle_command(doc)
+                    return dm.handle_command(doc)
                 else:
                     # If there are namespace mappings, we have to
                     # drop each collection in the database individually.
@@ -367,14 +363,17 @@ class OplogThread(threading.Thread):
                                 'db': db2,
                                 'drop': coll2
                             })
+                        return
 
             if doc.get('create') and \
                rewrite_coll_arg('create'):
-                dm.handle_command(doc)
+                return dm.handle_command(doc)
 
             if doc.get('drop') and \
                rewrite_coll_arg('drop'):
-                dm.handle_command(doc)
+                return dm.handle_command(doc)
+
+        return dm.handle_command(doc)
 
     def filter_oplog_entry(self, entry):
         """Remove fields from an oplog entry that should not be replicated."""
