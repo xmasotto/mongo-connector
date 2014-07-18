@@ -168,7 +168,7 @@ class TestOplogManager(unittest.TestCase):
         self.assertEqual(last_ts, self.opman.dump_collection())
         docs = self.opman.doc_managers[0]._search()
         docs.sort()
-        
+
         self.assertEqual(len(docs), 90)
         for doc, correct_a in zip(docs, range(0, 50) + range(60, 100)):
             self.assertEquals(doc['a'], correct_a)

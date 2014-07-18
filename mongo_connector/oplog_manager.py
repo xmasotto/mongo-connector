@@ -84,6 +84,18 @@ class OplogThread(threading.Thread):
         #The set of namespaces to process from the mongo cluster.
         self.namespace_set = namespace_set
 
+        #allow commands to be retrieved from the oplog
+        self.oplog_ns_set = []
+        self.oplog_ns_set.extend(self.namespace_set)
+        self.oplog_ns_set.extend(set(
+            ns.split('.', 1)[0] + '.$cmd' for ns in self.namespace_set))
+        if self.oplog_ns_set:
+            self.oplog_ns_set.append("admin.$cmd")
+            # grab no op commands
+            self.oplog_ns_set.append("")
+
+        LOG.error(self.oplog_ns_set)
+
         #The dict of source namespaces to destination namespaces
         self.dest_mapping = dest_mapping
 
@@ -190,19 +202,28 @@ class OplogThread(threading.Thread):
                         ns = entry['ns']
 
                         # use namespace mapping if one exists
-                        ns = self.dest_mapping.get(entry['ns'], ns)
+                        ns = self.dest_mapping.get(ns, ns)
 
                         for docman in self.doc_managers:
                             try:
                                 LOG.debug("OplogThread: Operation for this "
                                           "entry is %s" % str(operation))
 
+                                # Command
+                                if operation == 'c':
+                                    # use unmapped namespace
+                                    db = entry['ns'].split('.', 1)[0]
+                                    doc = entry.get('o')
+                                    doc['db'] = db
+                                    self.apply_command(docman, doc)
+
                                 # Remove
-                                if operation == 'd':
+                                elif operation == 'd':
                                     entry['_id'] = entry['o']['_id']
                                     entry['ns'] = ns
                                     docman.remove(entry)
                                     remove_inc += 1
+
                                 # Insert
                                 elif operation == 'i':  # Insert
                                     # Retrieve inserted document from
@@ -214,6 +235,7 @@ class OplogThread(threading.Thread):
                                     doc['ns'] = ns
                                     docman.upsert(doc)
                                     upsert_inc += 1
+
                                 # Update
                                 elif operation == 'u':
                                     doc = {"_id": entry['o2']['_id'],
@@ -223,14 +245,7 @@ class OplogThread(threading.Thread):
                                     # 'o' field contains the update spec
                                     docman.update(doc, entry.get('o', {}))
                                     update_inc += 1
-                                # Command
-                                elif operation == 'c':
-                                    doc = entry.get('o')
-                                    doc['_ts'] = util.bson_ts_to_long(
-                                        entry['ts'])
-                                    doc['ns'] = ns
-                                    docman.handle_command(doc)
-                                    pass
+
                             except errors.OperationFailed:
                                 LOG.exception(
                                     "Unable to process oplog document %r"
@@ -299,6 +314,68 @@ class OplogThread(threading.Thread):
         self.running = False
         threading.Thread.join(self)
 
+    # Rewrites a oplog command entry based on the namespace set and mapping,
+    # and passes the result to the given doc manager.
+    def apply_command(self, dm, doc):
+        def map_ns(ns):
+            if not self.namespace_set:
+                return ns
+            elif ns not in self.namespace_set:
+                return None
+            else:
+                return self.dest_mapping.get(ns, ns)
+
+        def rewrite_ns_arg(key):
+            doc[key] = map_ns(doc['db'] + '.' + doc[key])
+            return doc[key]
+
+        def rewrite_coll_arg(key):
+            ns = map_ns(doc['db'] + '.' + doc[key])
+            if ns:
+                doc['db'], doc[key] = ns.split('.', 1)
+            return ns
+
+        if doc['db'] == 'admin':
+            if doc.get('renameCollection'):
+                from_ns = rewrite_ns_arg('renameCollection')
+                to_ns = rewrite_ns_arg('to')
+                if from_ns is None:
+                    raise OperationFailed(
+                        "Cannot replicate renameCollection operation:"
+                        " \"%s\" does not exist on the target system" %
+                        doc.get('renameCollection'))
+                if to_ns is None:
+                    # Since the to_ns is not replicated, we can just drop it
+                    to_db, to_coll = to_ns.split('.', 1)
+                    self.apply_command(dm, {
+                        'db': to_db,
+                        'drop': to_coll
+                    })
+                else:
+                    dm.handle_command(doc)
+        else:
+            if doc.get('dropDatabase'):
+                if not self.dest_mapping:
+                    dm.handle_command(doc)
+                else:
+                    # If there are namespace mappings, we have to
+                    # drop each collection in the database individually.
+                    for ns in self.namespace_set:
+                        db2, coll2 = ns.split('.', 1)
+                        if db2 == doc['db']:
+                            self.apply_command(dm, {
+                                'db': db2,
+                                'drop': coll2
+                            })
+
+            if doc.get('create') and \
+               rewrite_coll_arg('create'):
+                dm.handle_command(doc)
+
+            if doc.get('drop') and \
+               rewrite_coll_arg('drop'):
+                dm.handle_command(doc)
+
     def filter_oplog_entry(self, entry):
         """Remove fields from an oplog entry that should not be replicated."""
         if not self._fields:
@@ -340,7 +417,7 @@ class OplogThread(threading.Thread):
             try:
                 LOG.debug("OplogThread: Getting the oplog cursor "
                           "in the while true loop for get_oplog_cursor")
-                if not self.namespace_set:
+                if not self.oplog_ns_set:
                     cursor = self.oplog.find(
                         {'ts': {'$gte': timestamp}},
                         tailable=True, await_data=True
@@ -348,7 +425,7 @@ class OplogThread(threading.Thread):
                 else:
                     cursor = self.oplog.find(
                         {'ts': {'$gte': timestamp},
-                         'ns': {'$in': self.namespace_set}},
+                         'ns': {'$in': self.oplog_ns_set}},
                         tailable=True, await_data=True
                     )
                 # Applying 8 as the mask to the cursor enables OplogReplay
@@ -550,13 +627,13 @@ class OplogThread(threading.Thread):
     def get_last_oplog_timestamp(self):
         """Return the timestamp of the latest entry in the oplog.
         """
-        if not self.namespace_set:
+        if not self.oplog_ns_set:
             curr = self.oplog.find().sort(
                 '$natural', pymongo.DESCENDING
             ).limit(1)
         else:
             curr = self.oplog.find(
-                {'ns': {'$in': self.namespace_set}}
+                {'ns': {'$in': self.oplog_ns_set}}
             ).sort('$natural', pymongo.DESCENDING).limit(1)
 
         if curr.count(with_limit_and_skip=True) == 0:
