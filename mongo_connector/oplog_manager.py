@@ -139,10 +139,6 @@ class OplogThread(threading.Thread):
         while self.running is True:
             logging.debug("OplogThread: Getting cursor")
             cursor = self.init_cursor()
-            cursor_len = 0 if cursor is None else util.retry_until_ok(
-                cursor.count, with_limit_and_skip=True)
-            logging.debug("OplogThread: Got the cursor, count is %d"
-                          % cursor_len)
 
             # we've fallen too far behind
             if cursor is None and self.checkpoint is not None:
@@ -152,11 +148,20 @@ class OplogThread(threading.Thread):
                 self.running = False
                 continue
 
+            if cursor:
+                cursor_len = util.retry_until_ok(
+                    cursor.count, with_limit_and_skip=True)
+            else:
+                cursor_len = 0
+
             if cursor_len == 0:
                 logging.debug("OplogThread: Last entry is the one we "
                               "already processed.  Up to date.  Sleeping.")
                 time.sleep(1)
                 continue
+
+            logging.debug("OplogThread: Got the cursor, count is %d"
+                          % cursor_len)
 
             last_ts = None
             err = False
