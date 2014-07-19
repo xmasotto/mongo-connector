@@ -192,6 +192,10 @@ class OplogThread(threading.Thread):
                         operation = entry['op']
                         ns = entry['ns']
 
+                        db, coll = ns.split('.', 1)
+                        if coll.startswith("system."):
+                            continue
+
                         # use namespace mapping if one exists
                         ns = self.dest_mapping.get(entry['ns'], ns)
 
@@ -538,12 +542,13 @@ class OplogThread(threading.Thread):
                 timestamp = self.dump_collection()
                 if timestamp is None:
                     return None
-                self.checkpoint = timestamp
-                self.update_checkpoint()
             else:
                 # Collection dump disabled:
                 # return cursor to beginning of oplog.
                 return self.get_oplog_cursor()
+
+        self.checkpoint = timestamp
+        self.update_checkpoint()
 
         cursor = self.get_oplog_cursor(timestamp)
         cursor_len = util.retry_until_ok(cursor.count)
@@ -558,7 +563,6 @@ class OplogThread(threading.Thread):
 
         # first entry should be last oplog entry processed
         first_oplog_entry = retry_until_ok(lambda: cursor[0])
-
         cursor_ts_long = util.bson_ts_to_long(first_oplog_entry.get("ts"))
         given_ts_long = util.bson_ts_to_long(timestamp)
         if cursor_ts_long > given_ts_long:
@@ -566,7 +570,7 @@ class OplogThread(threading.Thread):
             return None
 
         # we don't want to process the first entry twice
-        return util.retry_until_ok(cursor.skip, 1)
+        return cursor.skip(1)
 
     def update_checkpoint(self):
         """Store the current checkpoint in the oplog progress dictionary.
