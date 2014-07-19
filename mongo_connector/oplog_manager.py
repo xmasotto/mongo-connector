@@ -141,7 +141,8 @@ class OplogThread(threading.Thread):
             cursor = self.init_cursor()
             cursor_len = 0 if cursor is None else util.retry_until_ok(
                 cursor.count, with_limit_and_skip=True)
-            logging.debug("OplogThread: Got the cursor, count is %d" % cursor_len)
+            logging.debug("OplogThread: Got the cursor, count is %d"
+                          % cursor_len)
 
             # we've fallen too far behind
             if cursor is None and self.checkpoint is not None:
@@ -533,22 +534,27 @@ class OplogThread(threading.Thread):
 
         if timestamp is None:
             if self.collection_dump:
+                # dump collection and update checkpoint
                 timestamp = self.dump_collection()
                 if timestamp is None:
                     return None
+                self.checkpoint = timestamp
+                self.update_checkpoint()
             else:
                 # Collection dump disabled:
                 # return cursor to beginning of oplog.
                 return self.get_oplog_cursor()
 
         cursor = self.get_oplog_cursor(timestamp)
-        cursor_len = cursor.count()
+        cursor_len = util.retry_until_ok(cursor.count)
 
         if cursor_len == 0:
+            # rollback, update checkpoint, and retry
             logging.debug("OplogThread: Initiating rollback from "
-                      "get_oplog_cursor")
-            timestamp = self.rollback()
-            return init_cursor()
+                          "get_oplog_cursor")
+            self.checkpoint = self.rollback()
+            self.update_checkpoint()
+            return self.init_cursor()
 
         # first entry should be last oplog entry processed
         first_oplog_entry = retry_until_ok(lambda: cursor[0])
@@ -559,11 +565,8 @@ class OplogThread(threading.Thread):
             # first entry in oplog is beyond timestamp, we've fallen behind!
             return None
 
-        self.checkpoint = timestamp
-        self.update_checkpoint()
-
         # we don't want to process the first entry twice
-        return cursor.skip(1)
+        return util.retry_until_ok(cursor.skip, 1)
 
     def update_checkpoint(self):
         """Store the current checkpoint in the oplog progress dictionary.

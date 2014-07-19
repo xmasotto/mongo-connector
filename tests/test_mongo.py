@@ -16,6 +16,7 @@
     user
 """
 import time
+import logging
 import os
 import sys
 if sys.version_info[:2] == (2, 6):
@@ -184,7 +185,7 @@ class TestSynchronizer(unittest.TestCase):
 
         restart_mongo_proc(self.secondary_p)
 
-        time.sleep(2)
+        time.sleep(10)
         result_set_1 = list(self.mongo_doc._search())
         self.assertEqual(len(result_set_1), 1)
         for item in result_set_1:
