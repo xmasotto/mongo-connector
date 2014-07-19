@@ -141,7 +141,7 @@ class OplogThread(threading.Thread):
             cursor = self.init_cursor()
             cursor_len = 0 if cursor is None else util.retry_until_ok(
                 cursor.count, with_limit_and_skip=True)
-            LOG.debug("OplogThread: Got the cursor, count is %d" % cursor_len)
+            logging.debug("OplogThread: Got the cursor, count is %d" % cursor_len)
 
             # we've fallen too far behind
             if cursor is None and self.checkpoint is not None:
@@ -152,8 +152,8 @@ class OplogThread(threading.Thread):
                 continue
 
             if cursor_len == 0:
-                LOG.debug("OplogThread: Last entry is the one we "
-                          "already processed.  Up to date.  Sleeping.")
+                logging.debug("OplogThread: Last entry is the one we "
+                              "already processed.  Up to date.  Sleeping.")
                 time.sleep(1)
                 continue
 
@@ -327,8 +327,8 @@ class OplogThread(threading.Thread):
         while (True):
             try:
                 query = {}
-                if self.oplog_ns_set:
-                    query['ns'] = {'$in': self.oplog_ns_set}
+                if self.namespace_set:
+                    query['ns'] = {'$in': self.namespace_set}
 
                 if timestamp is None:
                     cursor = self.oplog.find(
@@ -534,31 +534,33 @@ class OplogThread(threading.Thread):
         if timestamp is None:
             if self.collection_dump:
                 timestamp = self.dump_collection()
-                if timestamp:
-                    self.checkpoint = timestamp
-                    self.update_checkpoint()
-                return None
+                if timestamp is None:
+                    return None
             else:
-                # Dump disabled: return cursor to beginning of oplog
+                # Collection dump disabled:
+                # return cursor to beginning of oplog.
                 return self.get_oplog_cursor()
 
-        cursor = get_oplog_cursor(timestamp)
+        cursor = self.get_oplog_cursor(timestamp)
         cursor_len = cursor.count()
 
         if cursor_len == 0:
-            LOG.debug("OplogThread: Initiating rollback from "
+            logging.debug("OplogThread: Initiating rollback from "
                       "get_oplog_cursor")
             timestamp = self.rollback()
             return init_cursor()
 
         # first entry should be last oplog entry processed
-        first_oplog_entry = retry_until_ok(next, lambda: cursor[0])
+        first_oplog_entry = retry_until_ok(lambda: cursor[0])
 
         cursor_ts_long = util.bson_ts_to_long(first_oplog_entry.get("ts"))
         given_ts_long = util.bson_ts_to_long(timestamp)
         if cursor_ts_long > given_ts_long:
             # first entry in oplog is beyond timestamp, we've fallen behind!
             return None
+
+        self.checkpoint = timestamp
+        self.update_checkpoint()
 
         # we don't want to process the first entry twice
         return cursor.skip(1)
