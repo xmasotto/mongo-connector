@@ -146,7 +146,6 @@ class OplogThread(threading.Thread):
         while self.running is True:
             LOG.debug("OplogThread: Getting cursor")
             cursor = self.init_cursor()
-            LOG.debug("OplogThread: Got the cursor, go go go!")
 
             # we've fallen too far behind
             if cursor is None and self.checkpoint is not None:
@@ -156,12 +155,20 @@ class OplogThread(threading.Thread):
                 self.running = False
                 continue
 
-            #The only entry is the last one we processed
-            if cursor is None or util.retry_until_ok(cursor.count) == 1:
-                LOG.debug("OplogThread: Last entry is the one we "
-                          "already processed.  Up to date.  Sleeping.")
+            if cursor:
+                cursor_len = util.retry_until_ok(
+                    cursor.count, with_limit_and_skip=True)
+            else:
+                cursor_len = 0
+
+            if cursor_len == 0:
+                logging.debug("OplogThread: Last entry is the one we "
+                              "already processed.  Up to date.  Sleeping.")
                 time.sleep(1)
                 continue
+
+            logging.debug("OplogThread: Got the cursor, count is %d"
+                          % cursor_len)
 
             last_ts = None
             err = False
@@ -196,6 +203,10 @@ class OplogThread(threading.Thread):
                         #sync the current oplog operation
                         operation = entry['op']
                         ns = entry['ns']
+
+                        db, coll = ns.split('.', 1)
+                        if coll.startswith("system."):
+                            continue
 
                         # use namespace mapping if one exists
                         ns = self.dest_mapping.get(ns, ns)
@@ -401,69 +412,32 @@ class OplogThread(threading.Thread):
 
         return entry
 
-    def get_oplog_cursor(self, timestamp):
-        """Move cursor to the proper place in the oplog.
+    def get_oplog_cursor(self, timestamp=None):
+        """Get a cursor to the oplog after the given timestamp, filtering
+        entries not in the namespace set.
+        If no timestamp is specified, returns a cursor to the entire oplog.
         """
-
-        LOG.debug("OplogThread: Getting the oplog cursor and moving it "
-                  "to the proper place in the oplog.")
-
-        if timestamp is None:
-            return None
-
-        cursor, cursor_len = None, 0
         while (True):
             try:
-                LOG.debug("OplogThread: Getting the oplog cursor "
-                          "in the while true loop for get_oplog_cursor")
-                if not self.oplog_ns_set:
+                query = {}
+                if self.oplog_ns_set:
+                    query['ns'] = {'$in': self.oplog_ns_set}
+
+                if timestamp is None:
                     cursor = self.oplog.find(
-                        {'ts': {'$gte': timestamp}},
-                        tailable=True, await_data=True
-                    )
+                        query, tailable=True, await_data=True)
                 else:
+                    query['ts'] = {'$gte': timestamp}
                     cursor = self.oplog.find(
-                        {'ts': {'$gte': timestamp},
-                         'ns': {'$in': self.oplog_ns_set}},
-                        tailable=True, await_data=True
-                    )
-                # Applying 8 as the mask to the cursor enables OplogReplay
-                cursor.add_option(8)
-                LOG.debug("OplogThread: Cursor created, getting a count.")
-                cursor_len = cursor.count()
-                LOG.debug("OplogThread: Count is %d" % cursor_len)
-                break
+                        query, tailable=True, await_data=True)
+                    # Applying 8 as the mask to the cursor enables OplogReplay
+                    cursor.add_option(8)
+                return cursor
+
             except (pymongo.errors.AutoReconnect,
                     pymongo.errors.OperationFailure,
                     pymongo.errors.ConfigurationError):
                 pass
-        if cursor_len == 0:
-            LOG.debug("OplogThread: Initiating rollback from "
-                      "get_oplog_cursor")
-            #rollback, we are past the last element in the oplog
-            timestamp = self.rollback()
-
-            LOG.info('Finished rollback')
-            return self.get_oplog_cursor(timestamp)
-        first_oplog_entry = retry_until_ok(lambda: cursor[0])
-        cursor_ts_long = util.bson_ts_to_long(first_oplog_entry.get("ts"))
-        given_ts_long = util.bson_ts_to_long(timestamp)
-        if cursor_ts_long > given_ts_long:
-            # first entry in oplog is beyond timestamp, we've fallen behind!
-            return None
-        elif cursor_len == 1:     # means we are the end of the oplog
-            self.checkpoint = timestamp
-            #to commit new TS after rollbacks
-
-            return cursor
-        elif cursor_len > 1:
-            doc = retry_until_ok(next, cursor)
-            if timestamp == doc['ts']:
-                return cursor
-            else:               # error condition
-                LOG.error('OplogThread: %s Bad timestamp in config file'
-                          % self.oplog)
-                return None
 
     def dump_collection(self):
         """Dumps collection into the target system.
@@ -648,25 +622,43 @@ class OplogThread(threading.Thread):
         The cursor is set to either the beginning of the oplog, or
         wherever it was last left off.
         """
-        LOG.debug("OplogThread: Initializing the oplog cursor.")
         timestamp = self.read_last_checkpoint()
 
-        if timestamp is None and self.collection_dump:
-            timestamp = self.dump_collection()
-            if timestamp:
-                msg = "Dumped collection into target system"
-                LOG.info('OplogThread: %s %s'
-                         % (self.oplog, msg))
-        elif timestamp is None:
-            # set timestamp to top of oplog
-            timestamp = retry_until_ok(self.get_last_oplog_timestamp)
+        if timestamp is None:
+            if self.collection_dump:
+                # dump collection and update checkpoint
+                timestamp = self.dump_collection()
+                if timestamp is None:
+                    return None
+            else:
+                # Collection dump disabled:
+                # return cursor to beginning of oplog.
+                return self.get_oplog_cursor()
 
         self.checkpoint = timestamp
-        cursor = self.get_oplog_cursor(timestamp)
-        if cursor is not None:
-            self.update_checkpoint()
+        self.update_checkpoint()
 
-        return cursor
+        cursor = self.get_oplog_cursor(timestamp)
+        cursor_len = util.retry_until_ok(cursor.count)
+
+        if cursor_len == 0:
+            # rollback, update checkpoint, and retry
+            logging.debug("OplogThread: Initiating rollback from "
+                          "get_oplog_cursor")
+            self.checkpoint = self.rollback()
+            self.update_checkpoint()
+            return self.init_cursor()
+
+        # first entry should be last oplog entry processed
+        first_oplog_entry = retry_until_ok(lambda: cursor[0])
+        cursor_ts_long = util.bson_ts_to_long(first_oplog_entry.get("ts"))
+        given_ts_long = util.bson_ts_to_long(timestamp)
+        if cursor_ts_long > given_ts_long:
+            # first entry in oplog is beyond timestamp, we've fallen behind!
+            return None
+
+        # we don't want to process the first entry twice
+        return cursor.skip(1)
 
     def update_checkpoint(self):
         """Store the current checkpoint in the oplog progress dictionary.
