@@ -608,6 +608,14 @@ def main():
                       " set of documents due to errors may cause undefined"
                       " behavior. Use this flag to dump only.")
 
+    # Specify which gridfs namespaces to replicate
+    parser.add_option("--gridfs-set", action="store",
+                      dest="gridfs_set", help=
+                      "Used to specify the gridfs namespaces we want to"
+                      " consider. For example, if your file metadata is stored"
+                      " in `test.fs.files` and chunks in `test.fs.chunks`,"
+                      " then use `--gridfs-set test.fs`.")
+
     #-v enables vebose logging
     parser.add_option("-v", "--verbose", action="store_true",
                       dest="verbose", default=False,
@@ -686,12 +694,14 @@ def main():
         ## Create a mapping of source ns to dest ns as a dict
         dest_mapping = dict(zip(ns_set, dest_ns_set))
 
-    #TODO make this a command line argument
-    gridfs_set = ["test.fs"]
-
     fields = options.fields
     if fields is not None:
-        fields = options.fields.split(',')
+        fields = fields.split(',')
+
+    if options.gridfs_set:
+        gridfs_set = options.gridfs_set.split(',')
+    else:
+        gridfs_set = []
 
     key = None
     if options.auth_file is not None:

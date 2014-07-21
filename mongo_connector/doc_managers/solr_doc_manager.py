@@ -38,8 +38,8 @@ from mongo_connector.doc_managers.formatters import DocumentFlattener
 
 wrap_exceptions = exception_wrapper({
     SolrError: errors.OperationFailed,
-    URLError: errors.OperationFailed,
-    HTTPError: errors.OperationFailed
+    URLError: errors.ConnectionFailed,
+    HTTPError: errors.ConnectionFailed
 })
 
 ADMIN_URL = 'admin/luke?show=schema&wt=json'
@@ -244,7 +244,7 @@ class DocManager(DocManagerBase):
         if self.auto_commit_interval == 0:
             params['commit'] = 'true'
 
-        request = Request(os.path.join(self.url, 
+        request = Request(os.path.join(self.url,
                      "update/extract?%s" % urllib.urlencode(params)))
 
         request.add_header("Content-type", "application/octet-stream")

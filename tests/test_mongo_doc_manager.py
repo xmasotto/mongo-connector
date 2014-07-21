@@ -105,7 +105,7 @@ class MongoDocManagerTester(unittest.TestCase):
         self.MongoDoc.upsert(docc)
         time.sleep(3)
         res = list(self.MongoDoc._search())
-        self.assertTrue(len(res) == 1)
+        self.assertEqual(len(res), 1)
         for doc in res:
             self.assertTrue(doc['_id'] == '1' and doc['name'] == 'John')
 
@@ -114,7 +114,7 @@ class MongoDocManagerTester(unittest.TestCase):
         self.MongoDoc.upsert(docc)
         time.sleep(1)
         res = list(self.MongoDoc._search())
-        self.assertTrue(len(res) == 1)
+        self.assertEqual(len(res), 1)
         for doc in res:
             self.assertTrue(doc['_id'] == '1' and doc['name'] == 'Paul')
 
@@ -127,14 +127,14 @@ class MongoDocManagerTester(unittest.TestCase):
         self.MongoDoc.upsert(docc)
         time.sleep(3)
         res = list(self.MongoDoc._search())
-        self.assertTrue(len(res) == 1)
+        self.assertEqual(len(res), 1)
         if "ns" not in docc:
             docc["ns"] = 'test.test'
 
         self.MongoDoc.remove(docc)
         time.sleep(1)
         res = list(self.MongoDoc._search())
-        self.assertTrue(len(res) == 0)
+        self.assertEqual(len(res), 0)
 
     def test_insert_file(self):
         test_data = ' '.join(str(x) for x in range(100000))
@@ -188,8 +188,8 @@ class MongoDocManagerTester(unittest.TestCase):
         self.MongoDoc.commit()
         search = list(self.MongoDoc._search())
         search2 = list(self.mongo.find())
-        self.assertTrue(len(search) == len(search2))
-        self.assertTrue(len(search) != 0)
+        self.assertEqual(len(search), len(search2))
+        self.assertNotEqual(len(search), 0)
         self.assertTrue(all(x in search for x in search2) and
                         all(y in search2 for y in search))
 
@@ -210,7 +210,7 @@ class MongoDocManagerTester(unittest.TestCase):
         self.MongoDoc.upsert(docc3)
         search = list(self.MongoDoc.search(5767301236327972865,
                                            5767301236327972866))
-        self.assertTrue(len(search) == 2)
+        self.assertEqual(len(search), 2)
         result_id = [result.get("_id") for result in search]
         self.assertIn('1', result_id)
         self.assertIn('2', result_id)
@@ -240,12 +240,12 @@ class MongoDocManagerTester(unittest.TestCase):
         self.MongoDoc.upsert(docc)
         time.sleep(1)
         doc = self.MongoDoc.get_last_doc()
-        self.assertTrue(doc['_id'] == '4')
+        self.assertEqual(doc['_id'], '4')
         docc = {'_id': '6', 'name': 'HareTwin', '_ts': 4, 'ns': 'test.test'}
         self.MongoDoc.upsert(docc)
         time.sleep(3)
         doc = self.MongoDoc.get_last_doc()
-        self.assertTrue(doc['_id'] == '6')
+        self.assertEqual(doc['_id'], '6')
 
     def test_get_last_doc_namespaces(self):
         """Ensure that get_last_doc returns the latest document in one of

@@ -195,20 +195,9 @@ class OplogThread(threading.Thread):
                         operation = entry['op']
                         ns = entry['ns']
 
-                        is_gridfs_file = False
-                        if coll.endswith(".files"):
-                            for i in range(len(self.gridfs_files_set)):
-                                if self.gridfs_files_set[i] == entry['ns']:
-                                    ns = self.gridfs_set[i]
-                                    is_gridfs_file = True
-                                    break
-                            else:
-                                # skip all gridfs namespaces that aren't
-                                # in gridfs_set
-                                continue
-
-                        # use namespace mapping if one exists
-                        ns = self.dest_mapping.get(entry['ns'], ns)
+                        if '.' not in ns:
+                            continue
+                        coll = ns.split('.', 1)[1]
 
                         # Ignore system collections
                         if coll.startswith("system."):
@@ -217,6 +206,17 @@ class OplogThread(threading.Thread):
                         # Ignore GridFS chunks
                         if coll.endswith('.chunks'):
                             continue
+
+                        is_gridfs_file = False
+                        if coll.endswith(".files"):
+                            if ns in self.gridfs_files_set:
+                                ns = ns[:-len(".files")]
+                                is_gridfs_file = True
+                            else:
+                                continue
+
+                        # use namespace mapping if one exists
+                        ns = self.dest_mapping.get(entry['ns'], ns)
 
                         for docman in self.doc_managers:
                             try:
@@ -370,7 +370,7 @@ class OplogThread(threading.Thread):
                 else:
                     cursor = self.oplog.find(
                         {'ts': {'$gte': timestamp},
-                         'ns': {'$in': self.namespace_set + 
+                         'ns': {'$in': self.namespace_set +
                                 self.gridfs_files_set}},
                         tailable=True, await_data=True
                     )

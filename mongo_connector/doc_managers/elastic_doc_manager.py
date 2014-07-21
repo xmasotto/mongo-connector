@@ -46,7 +46,8 @@ class DocManager(DocManagerBase):
     """
 
     def __init__(self, url, auto_commit_interval=DEFAULT_COMMIT_INTERVAL,
-                 unique_key='_id', chunk_size=DEFAULT_MAX_BULK, **kwargs):
+                 unique_key='_id', chunk_size=DEFAULT_MAX_BULK,
+                 attachment_field="content", **kwargs):
         self.elastic = Elasticsearch(hosts=[url])
         self.indices = IndicesClient(self.elastic)
         self.auto_commit_interval = auto_commit_interval
@@ -57,27 +58,13 @@ class DocManager(DocManagerBase):
             self.run_auto_commit()
         self._formatter = DefaultDocumentFormatter()
 
-        self.explicit_mappings = {}
-        self.attachment_field = "content"
+        self.has_attachment_mapping = False
+        self.attachment_field = attachment_field
 
     def stop(self):
         """Stop the auto-commit thread."""
         self.auto_commit_interval = None
 
-    def add_explicit_mapping(self, index, doc_type, field, body):
-        """Ensure that the given explicit mapping has been applied."""
-        k = (index, doc_type, field)
-        if self.explicit_mappings.get(k) != body:
-            mapping = {
-                "properties": {
-                    field: body
-                }
-            }
-            self.indices.put_mapping(index=index,
-                                     doc_type=doc_type,
-                                     body=mapping)
-            self.explicit_mappings[k] = body
-            
     @wrap_exceptions
     def update(self, doc, update_spec):
         """Apply updates given in update_spec to the document whose id
@@ -150,14 +137,23 @@ class DocManager(DocManagerBase):
         attachment_field = self.attachment_field
 
         # make sure that elasticsearch treats it like a file
-        self.add_explicit_mapping(index, doc_type, attachment_field,
-                                  {"type": "attachment"})
+        if not self.has_attachment_mapping:
+            body = {
+                "properties": {
+                    attachment_field: {"type": "attachment"}
+                }
+            }
+            self.indices.put_mapping(index=index,
+                                     doc_type=doc_type,
+                                     body=body)
+            self.has_attachment_mapping = True
+
         body = self._formatter.format_document(f.get_metadata())
         body[attachment_field] = base64.b64encode(f.read()).decode()
         doc_id = str(body.pop('_id'))
         self.elastic.index(index=index, doc_type=doc_type,
-                           body=body, id=doc_id, 
-                           refresh=(self.auto_commit_interval==0))
+                           body=body, id=doc_id,
+                           refresh=(self.auto_commit_interval == 0))
 
     @wrap_exceptions
     def remove(self, doc):

@@ -35,6 +35,7 @@ sys.path[0:0] = [""]
 
 from mongo_connector.gridfs_file import GridFSFile
 
+
 class MockGridFSFile:
     def __init__(self, doc, data):
         self._id = doc['_id']
@@ -74,7 +75,7 @@ class TestGridFSFile(unittest.TestCase):
         # Start up a replica set and connect to it
         _, _, cls.primary_p = start_replica_set('test-gridfs-file')
         cls.main_connection = MongoClient("%s:%d" % (mongo_host, cls.primary_p))
-        
+
     @classmethod
     def tearDownClass(cls):
         cls.main_connection.close()
@@ -135,7 +136,7 @@ class TestGridFSFile(unittest.TestCase):
         self.fs.delete(id)
         self.assertRaises(errors.OperationFailed, self.get_file, id)
 
-    def test_corrupted_file(self):
+    def test_missing_chunk(self):
         data = "test data"
         id = self.fs.put(data)
         f = self.get_file(id)
