@@ -233,5 +233,35 @@ class MongoDocManagerTester(unittest.TestCase):
         self.assertEqual(last_doc["ns"], self.namespaces_inc[0])
         self.assertEqual(last_doc["_id"], 98)
 
+    def test_commands(self):
+        # create test thing, assert
+        self.MongoDoc.handle_command({
+            'db': 'test',
+            'create': 'test'
+        })
+        self.assertIn('test', self.mongo_conn['test'].collection_names())
+
+        self.MongoDoc.handle_command({
+            'db': 'admin',
+            'renameCollection': 'test.test',
+            'to': 'test.test2'
+        })
+        self.assertNotIn('test', self.mongo_conn['test'].collection_names())
+        self.assertIn('test2', self.mongo_conn['test'].collection_names())
+
+        self.MongoDoc.handle_command({
+            'db': 'test',
+            'drop': 'test2'
+        })
+        self.assertNotIn('test2', self.mongo_conn['test'].collection_names())
+
+        self.assertIn('test', self.mongo_conn.database_names())
+        self.MongoDoc.handle_command({
+            'db': 'test',
+            'dropDatabase': 1
+        })
+        self.assertNotIn('test', self.mongo_conn.database_names())
+
+
 if __name__ == '__main__':
     unittest.main()
