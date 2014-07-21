@@ -37,6 +37,17 @@ LOG = logging.getLogger(__name__)
 class DocManagerBase(object):
     """Base class for all DocManager implementations."""
 
+    @property
+    def command_helper(self):
+        try:
+            return self._command_helper
+        except AttributeError:
+            return None
+
+    @command_helper.setter
+    def command_helper(self, value):
+        self._command_helper = value
+
     def apply_update(self, doc, update_spec):
         """Apply an update operation to a document."""
 
@@ -101,6 +112,20 @@ class DocManagerBase(object):
                         "Cannot apply update %r to %r" % (update_spec, doc),
                         exc_tb)
             return doc
+
+    def preprocess_command(self, doc):
+        # Throws exception if impossible
+        self.command_helper.rewrite_db(doc, 'dropDatabase')
+
+        # Ignores command if arg not in namespace set
+        self.command_helper.rewrite_collection(doc, 'create', 'create')
+        self.command_helper.rewrite_collection(doc, 'drop', 'drop')
+
+        # Throws exception when either argument isn't in the namespace set
+        self.command_helper.rewrite_namespace(
+            doc, 'renameCollection', 'renameCollection')
+        self.command_helper.rewrite_namespace(
+            doc, 'renameCollection', 'to')
 
     def handle_command(self, doc):
         LOG.warning("Doc manager does not support replication of commands.")

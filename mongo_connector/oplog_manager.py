@@ -29,6 +29,7 @@ import traceback
 from mongo_connector import errors, util
 from mongo_connector.constants import DEFAULT_BATCH_SIZE
 from mongo_connector.util import retry_until_ok
+from mongo_connector.command_helper import CommandHelper
 
 from pymongo import MongoClient
 
@@ -84,6 +85,9 @@ class OplogThread(threading.Thread):
         #The set of namespaces to process from the mongo cluster.
         self.namespace_set = namespace_set
 
+        #The dict of source namespaces to destination namespaces
+        self.dest_mapping = dest_mapping
+
         #allow commands to be retrieved from the oplog
         self.oplog_ns_set = []
         self.oplog_ns_set.extend(self.namespace_set)
@@ -92,8 +96,10 @@ class OplogThread(threading.Thread):
         if self.oplog_ns_set:
             self.oplog_ns_set.append("admin.$cmd")
 
-        #The dict of source namespaces to destination namespaces
-        self.dest_mapping = dest_mapping
+        #Give each doc manager access to a command helper
+        command_helper = CommandHelper(self.namespace_set, self.dest_mapping)
+        for dm in self.doc_managers:
+            dm.command_helper = command_helper
 
         #Whether the collection dump gracefully handles exceptions
         self.continue_on_error = continue_on_error
@@ -204,9 +210,10 @@ class OplogThread(threading.Thread):
                         operation = entry['op']
                         ns = entry['ns']
 
-                        db, coll = ns.split('.', 1)
-                        if coll.startswith("system."):
-                            continue
+                        if '.' in ns:
+                            db, coll = ns.split('.', 1)
+                            if coll.startswith("system."):
+                                continue
 
                         # use namespace mapping if one exists
                         ns = self.dest_mapping.get(ns, ns)
@@ -222,7 +229,9 @@ class OplogThread(threading.Thread):
                                     db = entry['ns'].split('.', 1)[0]
                                     doc = entry.get('o')
                                     doc['db'] = db
-                                    self.apply_command(docman, doc)
+                                    docman.preprocess_command(doc)
+                                    if doc:
+                                        docman.handle_command(doc)
 
                                 # Remove
                                 elif operation == 'd':
@@ -320,71 +329,6 @@ class OplogThread(threading.Thread):
         LOG.debug("OplogThread: exiting due to join call.")
         self.running = False
         threading.Thread.join(self)
-
-    # Rewrites a oplog command entry based on the namespace set and mapping,
-    # and passes the result to the given doc manager.
-    def apply_command(self, dm, doc):
-        def map_ns(ns):
-            if not self.namespace_set:
-                return ns
-            elif ns not in self.namespace_set:
-                return None
-            else:
-                return self.dest_mapping.get(ns, ns)
-
-        def rewrite_ns_arg(key):
-            doc[key] = map_ns(doc['db'] + '.' + doc[key])
-            return doc[key]
-
-        def rewrite_coll_arg(key):
-            ns = map_ns(doc['db'] + '.' + doc[key])
-            if ns:
-                doc['db'], doc[key] = ns.split('.', 1)
-            return ns
-
-        if doc['db'] == 'admin':
-            if doc.get('renameCollection'):
-                from_ns = rewrite_ns_arg('renameCollection')
-                to_ns = rewrite_ns_arg('to')
-                if from_ns is None:
-                    raise OperationFailed(
-                        "Cannot replicate renameCollection operation:"
-                        " \"%s\" does not exist on the target system" %
-                        doc.get('renameCollection'))
-                if to_ns is None:
-                    # Since the to_ns is not replicated, we can just drop it
-                    to_db, to_coll = to_ns.split('.', 1)
-                    return self.apply_command(dm, {
-                        'db': to_db,
-                        'drop': to_coll
-                    })
-                else:
-                    dm.handle_command(doc)
-        else:
-            if doc.get('dropDatabase'):
-                if not self.dest_mapping:
-                    return dm.handle_command(doc)
-                else:
-                    # If there are namespace mappings, we have to
-                    # drop each collection in the database individually.
-                    for ns in self.namespace_set:
-                        db2, coll2 = ns.split('.', 1)
-                        if db2 == doc['db']:
-                            self.apply_command(dm, {
-                                'db': db2,
-                                'drop': coll2
-                            })
-                        return
-
-            if doc.get('create') and \
-               rewrite_coll_arg('create'):
-                return dm.handle_command(doc)
-
-            if doc.get('drop') and \
-               rewrite_coll_arg('drop'):
-                return dm.handle_command(doc)
-
-        return dm.handle_command(doc)
 
     def filter_oplog_entry(self, entry):
         """Remove fields from an oplog entry that should not be replicated."""
