@@ -113,22 +113,15 @@ class DocManagerBase(object):
                         exc_tb)
             return doc
 
-    def preprocess_command(self, doc):
-        # Throws exception if impossible
-        self.command_helper.rewrite_db(doc, 'dropDatabase')
-
-        # Ignores command if arg not in namespace set
-        self.command_helper.rewrite_collection(doc, 'create', 'create')
-        self.command_helper.rewrite_collection(doc, 'drop', 'drop')
-
-        # Throws exception when either argument isn't in the namespace set
-        self.command_helper.rewrite_namespace(
-            doc, 'renameCollection', 'renameCollection')
-        self.command_helper.rewrite_namespace(
-            doc, 'renameCollection', 'to')
-
     def handle_command(self, doc):
-        LOG.warning("Doc manager does not support replication of commands.")
+        """Handle an oplog database command.
+
+        doc['db'] is set to the database that the command is acting on.
+        Namespace mappings have not been applied to doc['db'] or any of the
+        fields in doc - use methods in self.command_helper to apply them.
+        """
+        LOG.warning("%s does not support replication of commands."
+                    % self.__module__)
 
     def bulk_upsert(self, docs):
         """Upsert each document in a set of documents.

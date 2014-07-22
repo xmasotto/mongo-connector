@@ -90,18 +90,28 @@ class DocManager(DocManagerBase):
 
     @wrap_exceptions
     def handle_command(self, doc):
-        if doc.get('renameCollection'):
-            self.mongo.admin.command(
-                "renameCollection", doc['renameCollection'], to=doc['to'])
-
         if doc.get('dropDatabase'):
-            self.mongo.drop_database(doc['db'])
+            for db in self.command_helper.map_db(doc['db']):
+                self.mongo.drop_database(db)
+
+        if doc.get('renameCollection'):
+            a = self.command_helper.map_namespace(doc['renameCollection'])
+            b = self.command_helper.map_namespace(doc['to'])
+            if a and b:
+                self.mongo.admin.command(
+                    "renameCollection", a, to=b)
 
         if doc.get('create'):
-            self.mongo[doc['db']].create_collection(doc['create'])
+            db, coll = self.command_helper.map_collection(
+                doc['db'], doc['create'])
+            if db:
+                self.mongo[db].create_collection(coll)
 
         if doc.get('drop'):
-            self.mongo[doc['db']].drop_collection(doc['drop'])
+            db, coll = self.command_helper.map_collection(
+                doc['db'], doc['drop'])
+            if db:
+                self.mongo[db].drop_collection(coll)
 
     @wrap_exceptions
     def update(self, doc, update_spec):

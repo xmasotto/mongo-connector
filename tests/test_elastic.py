@@ -31,6 +31,7 @@ from tests.setup_cluster import (start_replica_set,
                                  kill_replica_set,
                                  restart_mongo_proc,
                                  kill_mongo_proc)
+from mongo_connector.command_helper import CommandHelper
 from mongo_connector.doc_managers.elastic_doc_manager import DocManager
 from mongo_connector.connector import Connector
 from mongo_connector.util import retry_until_ok
@@ -46,6 +47,7 @@ class ElasticsearchTestCase(unittest.TestCase):
         cls.elastic_conn = Elasticsearch(hosts=[elastic_pair])
         cls.elastic_doc = DocManager(elastic_pair,
                                      auto_commit_interval=0)
+        cls.elastic_doc.command_helper = CommandHelper()
 
     def setUp(self):
         # Create target index in elasticsearch

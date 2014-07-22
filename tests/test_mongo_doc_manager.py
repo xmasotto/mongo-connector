@@ -24,6 +24,7 @@ else:
 
 sys.path[0:0] = [""]
 
+from mongo_connector.command_helper import CommandHelper
 from mongo_connector.doc_managers.mongo_doc_manager import DocManager
 from pymongo import MongoClient
 
@@ -41,6 +42,7 @@ class MongoDocManagerTester(unittest.TestCase):
                                                         '--noprealloc'])
         cls.standalone_pair = '%s:%d' % (mongo_host, cls.standalone_port)
         cls.MongoDoc = DocManager(cls.standalone_pair)
+        cls.MongoDoc.command_helper = CommandHelper()
         cls.mongo_conn = MongoClient(cls.standalone_pair)
         cls.mongo = cls.mongo_conn['test']['test']
 

@@ -16,32 +16,43 @@
 """
 
 import logging
+import errors
 
 LOG = logging.getLogger(__name__)
 
 
-class CommandHelper:
-    def __init__(self, namespace_set, dest_mapping):
+class CommandHelper(object):
+    def __init__(self, namespace_set=[], dest_mapping={}):
         self.namespace_set = namespace_set
         self.dest_mapping = dest_mapping
 
         # Create a db to db mapping from the namespace mapping.
-        db_pairs = [(ns.split('.')[0],
-                     self.map_namespace(ns).split('.')[0])
-                    for ns in self.namespace_set]
-        mapping = dict(db_pairs)
+        self.db_pairs = set((ns.split('.')[0],
+                             self.map_namespace(ns).split('.')[0])
+                            for ns in self.namespace_set)
+        targets = set()
+        for _, dest in self.db_pairs:
+            if dest in targets:
+                dbs = [src2 for src2, dest2 in self.db_pairs
+                       if dest == dest2]
+                raise errors.MongoConnectorError(
+                    "Database mapping is not one-to-one."
+                    " %s %s have collections mapped to %s"
+                    % (", ".join(dbs),
+                       "both" if len(dbs) == 2 else "all",
+                       dest))
+            else:
+                targets.add(dest)
 
-        # Database commands can only be replicated if the
-        # database mapping is bijective.
-        surjective = len(mapping) == len(db_pairs)
-        injective = len(set(mapping.values())) == len(mapping)
-        self.db_bijection = surjective and injective
-        self.db_mapping = mapping
+    # Applies the namespace mapping to a database.
+    # Individual collections in a database can be mapped to
+    # different target databases, so map_db can return multiple results.
+    def map_db(self, db):
+        if not self.db_pairs:
+            return [db]
+        return [dest for src, dest in self.db_pairs if src == db]
 
-    def nullify(self, doc):
-        for k in list(doc):
-            del doc[k]
-
+    # Applies the namespace mapping to a "db.collection" string
     def map_namespace(self, ns):
         if not self.namespace_set:
             return ns
@@ -50,51 +61,10 @@ class CommandHelper:
         else:
             return self.dest_mapping.get(ns, ns)
 
-    def map_db(self, db):
-        if not self.db_mapping:
-            return db
-        elif db not in self.db_mapping:
-            return None
+    # Applies the namespace mapping to a db and collection
+    def map_collection(self, db, coll):
+        ns = self.map_namespace(db + '.' + coll)
+        if ns:
+            return tuple(ns.split('.', 1))
         else:
-            return self.db_mapping.get(db, db)
-
-    def rewrite_db(self, doc, command_name):
-        if doc.get(command_name):
-            if not self.db_bijection:
-                raise OperationFailed(
-                    "Cannot rewrite database for %s command:"
-                    "Database mapping is not bijective.")
-
-            db = self.map_db(doc['db'])
-            if db:
-                doc['db'] = db
-            else:
-                LOG.warning(
-                    "Skipping replication of %s command since"
-                    " %s isn't in the namespace set." %
-                    (command_name, doc['db']))
-                self.nullify(doc)
-
-    def rewrite_collection(self, doc, command_name, key):
-        if doc.get(command_name):
-            ns = self.map_namespace(doc['db'] + '.' + doc[key])
-            if ns:
-                doc['db'], doc[key] = ns.split('.', 1)
-            else:
-                LOG.warning(
-                    "Skipping replication of %s command since"
-                    " %s isn't in namespace set."
-                    % (command_name, doc['db'] + '.' + doc[key]))
-                self.nullify(doc)
-
-    def rewrite_namespace(self, doc, command_name, key):
-        if doc.get(command_name):
-            ns = self.map_namespace(doc.get(key))
-            if ns:
-                doc[key] = ns
-            else:
-                LOG.warning(
-                    "Skipping replication of %s command since"
-                    " %s isn't in namespace set."
-                    % (command_name, doc[key]))
-                self.nullify(doc)
+            return None, None

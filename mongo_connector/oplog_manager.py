@@ -29,7 +29,6 @@ import traceback
 from mongo_connector import errors, util
 from mongo_connector.constants import DEFAULT_BATCH_SIZE
 from mongo_connector.util import retry_until_ok
-from mongo_connector.command_helper import CommandHelper
 
 from pymongo import MongoClient
 
@@ -95,11 +94,6 @@ class OplogThread(threading.Thread):
             ns.split('.', 1)[0] + '.$cmd' for ns in self.namespace_set))
         if self.oplog_ns_set:
             self.oplog_ns_set.append("admin.$cmd")
-
-        #Give each doc manager access to a command helper
-        command_helper = CommandHelper(self.namespace_set, self.dest_mapping)
-        for dm in self.doc_managers:
-            dm.command_helper = command_helper
 
         #Whether the collection dump gracefully handles exceptions
         self.continue_on_error = continue_on_error
@@ -223,18 +217,8 @@ class OplogThread(threading.Thread):
                                 LOG.debug("OplogThread: Operation for this "
                                           "entry is %s" % str(operation))
 
-                                # Command
-                                if operation == 'c':
-                                    # use unmapped namespace
-                                    db = entry['ns'].split('.', 1)[0]
-                                    doc = entry.get('o')
-                                    doc['db'] = db
-                                    docman.preprocess_command(doc)
-                                    if doc:
-                                        docman.handle_command(doc)
-
                                 # Remove
-                                elif operation == 'd':
+                                if operation == 'd':
                                     entry['_id'] = entry['o']['_id']
                                     entry['ns'] = ns
                                     docman.remove(entry)
@@ -261,6 +245,14 @@ class OplogThread(threading.Thread):
                                     # 'o' field contains the update spec
                                     docman.update(doc, entry.get('o', {}))
                                     update_inc += 1
+
+                                # Command
+                                elif operation == 'c':
+                                    # use unmapped namespace
+                                    db = entry['ns'].split('.', 1)[0]
+                                    doc = entry.get('o')
+                                    doc['db'] = db
+                                    docman.handle_command(doc)
 
                             except errors.OperationFailed:
                                 LOG.exception(

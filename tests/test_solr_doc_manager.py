@@ -21,6 +21,7 @@ else:
 
 sys.path[0:0] = [""]
 
+from mongo_connector.command_helper import CommandHelper
 from mongo_connector.doc_managers.solr_doc_manager import DocManager
 from pysolr import Solr
 
@@ -35,6 +36,7 @@ class SolrDocManagerTester(unittest.TestCase):
         """
         cls.SolrDoc = DocManager("http://localhost:8983/solr/",
                                  auto_commit_interval=0)
+        cls.SolrDoc.command_helper = CommandHelper()
         cls.solr = Solr("http://localhost:8983/solr/")
 
     def setUp(self):
@@ -206,6 +208,46 @@ class SolrDocManagerTester(unittest.TestCase):
         docc = {'_id': '6', 'name': 'HareTwin', 'ts': '2'}
         doc = self.SolrDoc.get_last_doc()
         self.assertTrue(doc['_id'] == '4' or doc['_id'] == '6')
+
+    def test_commands(self):
+        def count_ns(ns):
+            return sum(1 for _ in self.SolrDoc._search("ns:%s" % ns))
+
+        self.SolrDoc.upsert({
+            '_id': '1',
+            'test': 'data',
+            'ns': 'test.test',
+            'ts': '1'
+        })
+        self.assertEqual(count_ns("test.test"), 1)
+
+        self.SolrDoc.handle_command({
+            'db': 'test',
+            'drop': 'test'
+        })
+        time.sleep(1)
+        self.assertEqual(count_ns("test.test"), 0)
+
+        self.SolrDoc.upsert({
+            '_id': '2',
+            'test': 'data',
+            'ns': 'test.test2',
+            'ts': '2'
+        })
+        self.SolrDoc.upsert({
+            '_id': '3',
+            'test': 'data',
+            'ns': 'test.test3',
+            'ts': '3'
+        })
+        self.SolrDoc.handle_command({
+            'db': 'test',
+            'dropDatabase': 1
+        })
+        time.sleep(1)
+        self.assertEqual(count_ns("test.test2"), 0)
+        self.assertEqual(count_ns("test.test3"), 0)
+
 
 if __name__ == '__main__':
     unittest.main()

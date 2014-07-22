@@ -17,7 +17,6 @@
 
 import sys
 import time
-import logging
 if sys.version_info[:2] == (2, 6):
     import unittest2 as unittest
 else:
@@ -25,6 +24,8 @@ else:
 
 import pymongo
 
+from mongo_connector import errors
+from mongo_connector.command_helper import CommandHelper
 from mongo_connector.doc_managers import DocManagerBase
 from mongo_connector.locking_dict import LockingDict
 from mongo_connector.oplog_manager import OplogThread
@@ -52,12 +53,10 @@ class CommandLoggerDocManager(DocManagerBase):
 
     def handle_command(self, doc):
         self.commands.append(doc)
-        print("command: %r" % doc)
 
 
 class TestCommandReplication(unittest.TestCase):
     def setUp(self):
-        logging.basicConfig(level=logging.DEBUG)
         _, _, self.primary_p = start_replica_set('test-command-replication')
         self.primary_conn = pymongo.MongoClient(mongo_host, self.primary_p)
         self.oplog_coll = self.primary_conn.local['oplog.rs']
@@ -75,6 +74,7 @@ class TestCommandReplication(unittest.TestCase):
 
     def initOplogThread(self, namespace_set=[], dest_mapping={}):
         self.docman = CommandLoggerDocManager()
+        self.docman.command_helper = CommandHelper(namespace_set, dest_mapping)
         self.opman = OplogThread(
             primary_conn=self.primary_conn,
             main_address='%s:%d' % (mongo_host, self.primary_p),
@@ -91,6 +91,33 @@ class TestCommandReplication(unittest.TestCase):
         )
         self.opman.start()
 
+    def test_command_helper(self):
+        # Databases cannot be merged
+        mapping = {
+            'a.x': 'c.x',
+            'b.x': 'c.y'
+        }
+        self.assertRaises(errors.MongoConnectorError,
+                          CommandHelper,
+                          list(mapping), mapping)
+
+        mapping = {
+            'a.x': 'b.x',
+            'a.y': 'c.y'
+        }
+        helper = CommandHelper(list(mapping) + ['a.z'], mapping)
+
+        self.assertEqual(set(helper.map_db('a')), set(['a', 'b', 'c']))
+        self.assertEqual(helper.map_db('d'), [])
+
+        self.assertEqual(helper.map_namespace('a.x'), 'b.x')
+        self.assertEqual(helper.map_namespace('a.z'), 'a.z')
+        self.assertEqual(helper.map_namespace('d.x'), None)
+
+        self.assertEqual(helper.map_collection('a', 'x'), ('b', 'x'))
+        self.assertEqual(helper.map_collection('a', 'z'), ('a', 'z'))
+        self.assertEqual(helper.map_collection('d', 'x'), (None, None))
+
     def test_create_collection(self):
         self.initOplogThread()
         pymongo.collection.Collection(
@@ -100,9 +127,8 @@ class TestCommandReplication(unittest.TestCase):
             self.docman.commands[0],
             {'db': 'test', 'create': 'test'})
 
-    def test_create_collection_mapped(self):
-        self.initOplogThread(['test.test'],
-                             {'test.test': 'test_.test_'})
+    def test_create_collection_skipped(self):
+        self.initOplogThread(['test.test'])
 
         pymongo.collection.Collection(
             self.primary_conn['test2'], 'test2', create=True)
@@ -113,7 +139,7 @@ class TestCommandReplication(unittest.TestCase):
         self.assertEqual(len(self.docman.commands), 1)
         self.assertEqual(
             self.docman.commands[0],
-            {'db': 'test_', 'create': 'test_'})
+            {'db': 'test', 'create': 'test'})
 
     def test_drop_collection(self):
         self.initOplogThread()
