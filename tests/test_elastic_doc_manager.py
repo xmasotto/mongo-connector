@@ -188,5 +188,38 @@ class ElasticDocManagerTester(ElasticsearchTestCase):
         self.assertEqual(
             self.elastic_doc.elastic.count(index="test.test")['count'], 3)
 
+    def test_commands(self):
+        self.elastic_doc.handle_command({
+            'db': 'test',
+            'create': 'test'
+        })
+        time.sleep(1)
+        self.assertIn('test.test', self.elastic_doc.get_indices())
+
+        self.elastic_doc.handle_command({
+            'db': 'test',
+            'drop': 'test'
+        })
+        time.sleep(1)
+        self.assertNotIn('test', self.elastic_doc.get_indices())
+
+        self.elastic_doc.handle_command({
+            'db': 'test',
+            'create': 'test'
+        })
+        self.elastic_doc.handle_command({
+            'db': 'test',
+            'create': 'test2'
+        })
+        time.sleep(1)
+        self.elastic_doc.handle_command({
+            'db': 'test',
+            'dropDatabase': 1
+        })
+        time.sleep(1)
+        self.assertNotIn('test.test', self.elastic_doc.get_indices())
+        self.assertNotIn('test.test2', self.elastic_doc.get_indices())
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -72,6 +72,29 @@ class DocManager(DocManagerBase):
             return update_spec
         return super(DocManager, self).apply_update(doc, update_spec)
 
+    def get_indices(self):
+        return list(self.elastic.indices.stats()['indices'])
+
+    @wrap_exceptions
+    def handle_command(self, doc):
+        if doc.get('renameCollection'):
+            raise OperationFailed(
+                "Elasticsearch does not support renaming an index.")
+
+        if doc.get('dropDatabase'):
+            for index in self.get_indices():
+                if index.startswith(doc['db'] + '.'):
+                    self.elastic.indices.delete(
+                        index=index, ignore=400)
+
+        if doc.get('create'):
+            self.elastic.indices.create(
+                index=doc['db'] + '.' + doc['create'], ignore=400)
+
+        if doc.get('drop'):
+            self.elastic.indices.delete(
+                index=doc['db'] + '.' + doc['drop'], ignore=400)
+
     @wrap_exceptions
     def update(self, doc, update_spec):
         """Apply updates given in update_spec to the document whose id
