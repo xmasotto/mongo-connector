@@ -661,7 +661,6 @@ def main():
     else:
         dest_ns_set = options.dest_ns_set.split(',')
 
-
     if len(dest_ns_set) != len(ns_set):
         LOG.error("Destination namespace must be the same length as the "
                   "origin namespace!")

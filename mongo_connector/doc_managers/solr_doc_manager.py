@@ -146,6 +146,7 @@ class DocManager(DocManagerBase):
         """
         pass
 
+    @wrap_exceptions
     def handle_command(self, doc):
         print("apply command")
 
