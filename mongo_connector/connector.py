@@ -77,6 +77,7 @@ class Connector(threading.Thread):
         else:
             LOG.info('No doc managers specified, using simulator.')
             self.doc_managers = (simulator.DocManager(),)
+        print(self.doc_managers)
 
         # Username for authentication
         self.auth_username = auth_username
@@ -96,9 +97,6 @@ class Connector(threading.Thread):
 
         # List of fields to export
         self.fields = fields
-
-        # Doc Managers
-        self.doc_managers = doc_managers
 
         if self.oplog_checkpoint is not None:
             if not os.path.exists(self.oplog_checkpoint):
@@ -791,24 +789,32 @@ def main():
     conf = config.Config(get_config_options())
     conf.parse_args()
 
-    loglevel = logging.DEBUG if conf['verbosity'] > 0 else logging.INFO
-    LOG.setLevel(loglevel)
+    print(conf['docManagers'])
+
+    root_logger = logging.getLogger()
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s:%(lineno)d - %(message)s")
+
+    loglevel = logging.INFO
+    if conf['verbosity'] > 0:
+        loglevel = logging.DEBUG
+    root_logger.setLevel(loglevel)
 
     if conf['logging.type'] == 'file':
         log_out = logging.FileHandler(conf['logging.filename'])
         log_out.setLevel(loglevel)
-        log_out.setFormatter(logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s'))
-        LOG.addHandler(log_out)
+        log_out.setFormatter(formatter)
+        root_logger.addHandler(log_out)
 
     if conf['logging.type'] == 'syslog':
         syslog_info = conf['logging.host'].split(":")
-        syslog_host = logging.handlers.SysLogHandler(
+        log_out = logging.handlers.SysLogHandler(
             address=(syslog_info[0], int(syslog_info[1])),
             facility=conf['logging.facility']
         )
-        syslog_host.setLevel(loglevel)
-        LOG.addHandler(syslog_host)
+        log_out.setLevel(loglevel)
+        log_out.setFormatter(formatter)
+        root_logger.addHandler(log_out)
 
     if conf['logging.type'] is None:
         log_out = logging.StreamHandler()
