@@ -321,8 +321,7 @@ class TestOplogManagerSharded(unittest.TestCase):
         self.assertEqual(self.opman2.checkpoint, None)
 
         # No last checkpoint, empty collections, nothing in oplog
-        self.opman1.collection_dump = True
-        self.opman2.collection_dump = True
+        self.opman1.collection_dump = self.opman2.collection_dump = True
 
         cursor, cursor_len = self.opman1.init_cursor()
         self.assertEqual(cursor, None)
@@ -352,16 +351,20 @@ class TestOplogManagerSharded(unittest.TestCase):
         self.assertEqual(cursor_len, 0)
         self.assertEqual(self.opman2.checkpoint, oplog_startup_ts)
 
-        # No last checkpoint, non-empty collections, stuff in oplog
+        # No last checkpoint, no collection dump, stuff in oplog
         progress = LockingDict()
         self.opman1.oplog_progress = self.opman2.oplog_progress = progress
+        self.opman1.collection_dump = self.opman2.collection_dump = False
         collection.insert({"i": 1200})
         last_ts2 = self.opman2.get_last_oplog_timestamp()
-        self.assertEqual(next(self.opman1.init_cursor())["ts"], last_ts1)
+        self.opman1.init_cursor()
         self.assertEqual(self.opman1.checkpoint, last_ts1)
         with self.opman1.oplog_progress as prog:
             self.assertEqual(prog.get_dict()[str(self.opman1.oplog)], last_ts1)
-        self.assertEqual(next(self.opman2.init_cursor())["ts"], last_ts2)
+        cursor, cursor_len = self.opman2.init_cursor()
+        for i in range(cursor_len - 1):
+            next(cursor)
+        self.assertEqual(next(cursor)["o"]["i"], 1200)
         self.assertEqual(self.opman2.checkpoint, last_ts2)
         with self.opman2.oplog_progress as prog:
             self.assertEqual(prog.get_dict()[str(self.opman2.oplog)], last_ts2)
@@ -379,8 +382,8 @@ class TestOplogManagerSharded(unittest.TestCase):
         progress.get_dict()[str(self.opman2.oplog)] = entry2[0]["ts"]
         self.opman1.oplog_progress = self.opman2.oplog_progress = progress
         self.opman1.checkpoint = self.opman2.checkpoint = None
-        cursor1 = self.opman1.init_cursor()
-        cursor2 = self.opman2.init_cursor()
+        cursor1, cursor_len1 = self.opman1.init_cursor()
+        cursor2, cursor_len2 = self.opman2.init_cursor()
         self.assertEqual(entry1[1]["ts"], next(cursor1)["ts"])
         self.assertEqual(entry2[1]["ts"], next(cursor2)["ts"])
         self.assertEqual(self.opman1.checkpoint, entry1[0]["ts"])
@@ -391,6 +394,21 @@ class TestOplogManagerSharded(unittest.TestCase):
         with self.opman2.oplog_progress as prog:
             self.assertEqual(prog.get_dict()[str(self.opman2.oplog)],
                              entry2[0]["ts"])
+
+        # Last checkpoint is behind
+        progress = LockingDict()
+        progress.get_dict()[str(self.opman1.oplog)] = bson.Timestamp(1, 0)
+        progress.get_dict()[str(self.opman2.oplog)] = bson.Timestamp(1, 0)
+        self.opman1.oplog_progress = self.opman2.oplog_progress = progress
+        self.opman1.checkpoint = self.opman2.checkpoint = None
+        cursor, cursor_len = self.opman1.init_cursor()
+        self.assertEqual(cursor_len, 0)
+        self.assertEqual(cursor, None)
+        self.assertIsNotNone(self.opman1.checkpoint)
+        cursor, cursor_len = self.opman2.init_cursor()
+        self.assertEqual(cursor_len, 0)
+        self.assertEqual(cursor, None)
+        self.assertIsNotNone(self.opman2.checkpoint)
 
     def test_rollback(self):
         """Test the rollback method in a sharded environment

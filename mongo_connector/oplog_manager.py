@@ -337,7 +337,6 @@ class OplogThread(threading.Thread):
                 if timestamp is None:
                     cursor = self.oplog.find(
                         query,
-                        sort=[('ts', pymongo.ASCENDING)],
                         tailable=True, await_data=True)
                 else:
                     query['ts'] = {'$gte': timestamp}
@@ -549,6 +548,8 @@ class OplogThread(threading.Thread):
                 # Collection dump disabled:
                 # return cursor to beginning of oplog.
                 cursor = self.get_oplog_cursor()
+                self.checkpoint = self.get_last_oplog_timestamp()
+                self.update_checkpoint()
                 return cursor, util.retry_until_ok(cursor.count)
 
         self.checkpoint = timestamp

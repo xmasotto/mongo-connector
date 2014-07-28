@@ -211,14 +211,15 @@ class TestOplogManager(unittest.TestCase):
             self.assertEqual(prog.get_dict()[str(self.opman.oplog)], last_ts)
 
         # No last checkpoint, no collection dump, something in oplog
-        self.opman.progress = LockingDict()
+        self.opman.oplog_progress = LockingDict()
         self.opman.collection_dump = False
         collection.insert({"i": 2})
-        time.sleep(3)
+        last_ts = self.opman.get_last_oplog_timestamp()
         cursor, cursor_len = self.opman.init_cursor()
         for i in range(cursor_len - 1):
             next(cursor)
         self.assertEqual(next(cursor)['o']['i'], 2)
+        self.assertEqual(self.opman.checkpoint, last_ts)
 
         # Last checkpoint exists
         progress = LockingDict()
