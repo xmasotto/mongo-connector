@@ -567,14 +567,14 @@ class OplogThread(threading.Thread):
             return self.init_cursor()
 
         # first entry should be last oplog entry processed
-        first_oplog_entry = retry_until_ok(next, cursor)
+        first_oplog_entry = retry_until_ok(lambda: cursor[0])
         cursor_ts_long = util.bson_ts_to_long(first_oplog_entry.get("ts"))
         given_ts_long = util.bson_ts_to_long(timestamp)
         if cursor_ts_long > given_ts_long:
             # first entry in oplog is beyond timestamp, we've fallen behind!
             return None, 0
 
-        # First entry has already been consumed.
+        retry_until_ok(next, cursor)
         return cursor, cursor_len - 1
 
     def update_checkpoint(self):
