@@ -54,7 +54,9 @@ except IOError:
     pass        # Install without README.rst
 
 
-class CustomCommand(Command):
+class InstallService(Command):
+    description = "Installs Mongo Connector as a system daemon"
+
     user_options = []
 
     def initialize_options(self):
@@ -62,10 +64,6 @@ class CustomCommand(Command):
 
     def finalize_options(self):
         pass
-
-
-class InstallService(CustomCommand):
-    description = "Installs Mongo Connector as a system daemon"
 
     def run(self):
         if os.geteuid() > 0:
@@ -78,8 +76,16 @@ class InstallService(CustomCommand):
                       "/etc/init.d/mongo-connector")
 
 
-class UninstallService(CustomCommand):
+class UninstallService(Command):
     description = "Uninstalls Mongo Connector as a system daemon"
+
+    user_options = []
+
+    def initialize_options(self):
+        pass
+
+    def finalize_options(self):
+        pass
 
     def remove_file(self, path):
         if os.path.exists(path):
