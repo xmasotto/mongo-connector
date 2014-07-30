@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
 import time
 import sys
 if sys.version_info[:2] == (2, 6):
@@ -139,7 +140,7 @@ class SolrDocManagerTester(unittest.TestCase):
             '_ts': 10,
             'ns': 'test.ns',
             'filename': 'test_filename',
-            'upload_date': 5,
+            'upload_date': datetime.datetime.now(),
             'md5': 'test_md5'
         }
         self.SolrDoc.insert_file(MockGridFSFile(docc, test_data))
@@ -159,7 +160,7 @@ class SolrDocManagerTester(unittest.TestCase):
             '_ts': 10,
             'ns': 'test.ns',
             'filename': 'test_filename',
-            'upload_date': 5,
+            'upload_date': datetime.datetime.now(),
             'md5': 'test_md5'
         }
 

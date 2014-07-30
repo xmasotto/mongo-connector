@@ -244,8 +244,8 @@ class DocManager(DocManagerBase):
         if self.auto_commit_interval == 0:
             params['commit'] = 'true'
 
-        request = Request(os.path.join(self.url,
-                     "update/extract?%s" % urllib.urlencode(params)))
+        request = Request(os.path.join(
+            self.url, "update/extract?%s" % urllib.urlencode(params)))
 
         request.add_header("Content-type", "application/octet-stream")
         request.add_data(f)

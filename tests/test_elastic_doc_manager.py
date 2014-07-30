@@ -133,8 +133,6 @@ class ElasticDocManagerTester(ElasticsearchTestCase):
         res = self._search()
         for doc in res:
             self.assertEqual(doc['_id'], docc['_id'])
-            self.assertEqual(doc['_ts'], docc['_ts'])
-            self.assertEqual(doc['ns'], docc['ns'])
             self.assertEqual(doc['filename'], docc['filename'])
             self.assertEqual(base64.b64decode(doc['content']),
                              test_data.strip())

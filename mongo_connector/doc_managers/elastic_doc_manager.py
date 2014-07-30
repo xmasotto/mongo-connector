@@ -54,7 +54,6 @@ class DocManager(DocManagerBase):
                  meta_index_name="mongodb_meta", meta_type="mongodb_meta",
                  attachment_field="content", **kwargs):
         self.elastic = Elasticsearch(hosts=[url])
-        self.indices = IndicesClient(self.elastic)
         self.auto_commit_interval = auto_commit_interval
         self.doc_type = 'string'  # default type is string, change if needed
         self.meta_index_name = meta_index_name
@@ -173,27 +172,36 @@ class DocManager(DocManagerBase):
 
     @wrap_exceptions
     def insert_file(self, f):
+        doc = f.get_metadata()
+        doc_id = str(doc.pop('_id'))
         doc_type = self.doc_type
-        index = f.ns
-        attachment_field = self.attachment_field
+        index = doc.pop('ns')
 
         # make sure that elasticsearch treats it like a file
         if not self.has_attachment_mapping:
             body = {
                 "properties": {
-                    attachment_field: {"type": "attachment"}
+                    self.attachment_field: {"type": "attachment"}
                 }
             }
-            self.indices.put_mapping(index=index,
-                                     doc_type=doc_type,
-                                     body=body)
+            self.elastic.indices.put_mapping(index=index,
+                                             doc_type=doc_type,
+                                             body=body)
             self.has_attachment_mapping = True
 
-        body = self._formatter.format_document(f.get_metadata())
-        body[attachment_field] = base64.b64encode(f.read()).decode()
-        doc_id = str(body.pop('_id'))
+        metadata = {
+            'ns': index,
+            '_ts': doc.pop('_ts')
+        }
+
+        doc = self._formatter.format_document(doc)
+        doc[self.attachment_field] = base64.b64encode(f.read()).decode()
+
         self.elastic.index(index=index, doc_type=doc_type,
-                           body=body, id=doc_id,
+                           body=doc, id=doc_id,
+                           refresh=(self.auto_commit_interval == 0))
+        self.elastic.index(index=self.meta_index_name, doc_type=self.meta_type,
+                           body=bson.json_util.dumps(metadata), id=doc_id,
                            refresh=(self.auto_commit_interval == 0))
 
     @wrap_exceptions
