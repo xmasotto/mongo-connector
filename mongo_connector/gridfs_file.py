@@ -5,9 +5,8 @@ import pymongo
 import time
 
 from mongo_connector import compat, errors, util
-from mongo_connector.doc_managers import exception_wrapper
 
-wrap_exceptions = exception_wrapper({
+wrap_exceptions = util.exception_wrapper({
     gridfs.errors.CorruptGridFile: errors.OperationFailed,
     gridfs.errors.NoFile: errors.OperationFailed
 })

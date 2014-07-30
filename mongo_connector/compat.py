@@ -7,10 +7,12 @@ PY3 = (sys.version_info[0] == 3)
 if PY3:
     def reraise(exctype, value, trace=None):
         raise exctype(str(value)).with_traceback(trace)
+    from itertools import zip_longest
 else:
     exec("""def reraise(exctype, value, trace=None):
     raise exctype, str(value), trace
 """)
+    from itertools import izip_longest as zip_longest
 
 if PY3:
     from urllib.request import Request

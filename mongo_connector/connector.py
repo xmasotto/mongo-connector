@@ -25,57 +25,27 @@ import shutil
 import sys
 import threading
 import time
-import imp
-from mongo_connector import constants, errors, util
+from mongo_connector import constants, util
+from mongo_connector.compat import zip_longest
 from mongo_connector.locking_dict import LockingDict
 from mongo_connector.oplog_manager import OplogThread
 from mongo_connector.doc_managers import doc_manager_simulator as simulator
+from mongo_connector.doc_managers.doc_manager_base import DocManagerBase
 
 from pymongo import MongoClient
+
+LOG = logging.getLogger(__name__)
 
 
 class Connector(threading.Thread):
     """Checks the cluster for shards to tail.
     """
-    def __init__(self, address, oplog_checkpoint, target_url, ns_set,
-                 u_key, auth_key, doc_manager=None,
-                 auth_username=None, collection_dump=True,
-                 batch_size=constants.DEFAULT_BATCH_SIZE,
+    def __init__(self, address, oplog_checkpoint, ns_set,
+                 auth_key, doc_managers=None, auth_username=None,
+                 collection_dump=True, batch_size=constants.DEFAULT_BATCH_SIZE,
                  fields=None, dest_mapping={},
                  auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL,
                  continue_on_error=False, gridfs_set=[]):
-
-        if target_url and not doc_manager:
-            raise errors.ConnectorError("Cannot create a Connector with a "
-                                        "target URL but no doc manager!")
-
-        def is_string(s):
-            try:
-                return isinstance(s, basestring)
-            except NameError:
-                return isinstance(s, str)
-
-        def load_doc_manager(path):
-            name, _ = os.path.splitext(os.path.basename(path))
-            try:
-                import importlib.machinery
-                loader = importlib.machinery.SourceFileLoader(name, path)
-                module = loader.load_module(name)
-            except ImportError:
-                module = imp.load_source(name, path)
-            return module
-
-        doc_manager_modules = None
-
-        if doc_manager is not None:
-            # backwards compatilibity: doc_manager may be a string
-            if is_string(doc_manager):
-                doc_manager_modules = [load_doc_manager(doc_manager)]
-            # doc_manager is a list
-            else:
-                doc_manager_modules = []
-                for dm in doc_manager:
-                    doc_manager_modules.append(load_doc_manager(dm))
 
         super(Connector, self).__init__()
 
@@ -87,14 +57,6 @@ class Connector(threading.Thread):
 
         #main address - either mongos for sharded setups or a primary otherwise
         self.address = address
-
-        #The URLs of each target system, respectively
-        if is_string(target_url):
-            self.target_urls = [target_url]
-        elif target_url:
-            self.target_urls = list(target_url)
-        else:
-            self.target_urls = None
 
         #The set of relevant namespaces to consider
         self.ns_set = ns_set
@@ -108,12 +70,14 @@ class Connector(threading.Thread):
         #Whether the collection dump gracefully handles exceptions
         self.continue_on_error = continue_on_error
 
-        #The key that is a unique document identifier for the target system.
-        #Not necessarily the mongo unique key.
-        self.u_key = u_key
-
         #Password for authentication
         self.auth_key = auth_key
+
+        # List of DocManager instances
+        if doc_managers:
+            self.doc_managers = doc_managers
+        else:
+            self.doc_managers = (simulator.DocManager(),)
 
         #Username for authentication
         self.auth_username = auth_username
@@ -134,62 +98,25 @@ class Connector(threading.Thread):
         # List of fields to export
         self.fields = fields
 
-        try:
-            docman_kwargs = {"unique_key": u_key,
-                             "namespace_set": ns_set,
-                             "auto_commit_interval": auto_commit_interval}
-
-            # No doc managers specified, using simulator
-            if doc_manager is None:
-                self.doc_managers = [simulator.DocManager(**docman_kwargs)]
-            else:
-                self.doc_managers = []
-                for i, d in enumerate(doc_manager_modules):
-                    # self.target_urls may be shorter than
-                    # self.doc_managers, or left as None
-                    if self.target_urls and i < len(self.target_urls):
-                        target_url = self.target_urls[i]
-                    else:
-                        target_url = None
-
-                    if target_url:
-                        self.doc_managers.append(
-                            d.DocManager(self.target_urls[i],
-                                         **docman_kwargs))
-                    else:
-                        self.doc_managers.append(
-                            d.DocManager(**docman_kwargs))
-                # If more target URLs were given than doc managers, may need
-                # to create additional doc managers
-                for url in self.target_urls[i + 1:]:
-                    self.doc_managers.append(
-                        doc_manager_modules[-1].DocManager(url,
-                                                           **docman_kwargs))
-        except errors.ConnectionFailed:
-            err_msg = "MongoConnector: Could not connect to target system"
-            logging.critical(err_msg)
-            self.can_run = False
-            return
-
         if self.oplog_checkpoint is not None:
             if not os.path.exists(self.oplog_checkpoint):
                 info_str = ("MongoConnector: Can't find %s, "
                             "attempting to create an empty progress log" %
                             self.oplog_checkpoint)
-                logging.info(info_str)
+                LOG.info(info_str)
                 try:
                     # Create oplog progress file
                     open(self.oplog_checkpoint, "w").close()
                 except IOError as e:
-                    logging.critical("MongoConnector: Could not "
-                                     "create a progress log: %s" %
-                                     str(e))
+                    LOG.critical("MongoConnector: Could not "
+                                 "create a progress log: %s" %
+                                 str(e))
                     sys.exit(2)
             else:
                 if (not os.access(self.oplog_checkpoint, os.W_OK)
                         and not os.access(self.oplog_checkpoint, os.R_OK)):
-                    logging.critical("Invalid permissions on %s! Exiting" %
-                                     (self.oplog_checkpoint))
+                    LOG.critical("Invalid permissions on %s! Exiting" %
+                                 (self.oplog_checkpoint))
                     sys.exit(2)
 
     def join(self):
@@ -242,7 +169,7 @@ class Connector(threading.Thread):
         # Check for empty file
         try:
             if os.stat(self.oplog_checkpoint).st_size == 0:
-                logging.info("MongoConnector: Empty oplog progress file.")
+                LOG.info("MongoConnector: Empty oplog progress file.")
                 return None
         except OSError:
             return None
@@ -252,8 +179,8 @@ class Connector(threading.Thread):
             data = json.load(source)
         except ValueError:       # empty file
             reason = "It may be empty or corrupt."
-            logging.info("MongoConnector: Can't read oplog progress file. %s" %
-                         (reason))
+            LOG.info("MongoConnector: Can't read oplog progress file. %s" %
+                     (reason))
             source.close()
             return None
 
@@ -285,7 +212,7 @@ class Connector(threading.Thread):
             # Make sure we are connected to a replica set
             is_master = main_conn.admin.command("isMaster")
             if not "setName" in is_master:
-                logging.error(
+                LOG.error(
                     'No replica set at "%s"! A replica set is required '
                     'to run mongo-connector. Shutting down...' % self.address
                 )
@@ -306,7 +233,7 @@ class Connector(threading.Thread):
                 main_address=self.address,
                 oplog_coll=oplog_coll,
                 is_sharded=False,
-                doc_manager=self.doc_managers,
+                doc_managers=self.doc_managers,
                 oplog_progress_dict=self.oplog_progress,
                 namespace_set=self.ns_set,
                 auth_key=self.auth_key,
@@ -320,15 +247,15 @@ class Connector(threading.Thread):
                 gridfs_set=self.gridfs_set
             )
             self.shard_set[0] = oplog
-            logging.info('MongoConnector: Starting connection thread %s' %
-                         main_conn)
+            LOG.info('MongoConnector: Starting connection thread %s' %
+                     main_conn)
             oplog.start()
 
             while self.can_run:
                 if not self.shard_set[0].running:
-                    logging.error("MongoConnector: OplogThread"
-                                  " %s unexpectedly stopped! Shutting down" %
-                                  (str(self.shard_set[0])))
+                    LOG.error("MongoConnector: OplogThread"
+                              " %s unexpectedly stopped! Shutting down" %
+                              (str(self.shard_set[0])))
                     self.oplog_thread_join()
                     for dm in self.doc_managers:
                         dm.stop()
@@ -344,10 +271,10 @@ class Connector(threading.Thread):
                     shard_id = shard_doc['_id']
                     if shard_id in self.shard_set:
                         if not self.shard_set[shard_id].running:
-                            logging.error("MongoConnector: OplogThread "
-                                          "%s unexpectedly stopped! Shutting "
-                                          "down" %
-                                          (str(self.shard_set[shard_id])))
+                            LOG.error("MongoConnector: OplogThread "
+                                      "%s unexpectedly stopped! Shutting "
+                                      "down" %
+                                      (str(self.shard_set[shard_id])))
                             self.oplog_thread_join()
                             for dm in self.doc_managers:
                                 dm.stop()
@@ -360,7 +287,7 @@ class Connector(threading.Thread):
                         repl_set, hosts = shard_doc['host'].split('/')
                     except ValueError:
                         cause = "The system only uses replica sets!"
-                        logging.error("MongoConnector: %s", cause)
+                        LOG.exception("MongoConnector: %s", cause)
                         self.oplog_thread_join()
                         for dm in self.doc_managers:
                             dm.stop()
@@ -374,7 +301,7 @@ class Connector(threading.Thread):
                         main_address=self.address,
                         oplog_coll=oplog_coll,
                         is_sharded=True,
-                        doc_manager=self.doc_managers,
+                        doc_managers=self.doc_managers,
                         oplog_progress_dict=self.oplog_progress,
                         namespace_set=self.ns_set,
                         auth_key=self.auth_key,
@@ -388,7 +315,7 @@ class Connector(threading.Thread):
                     )
                     self.shard_set[shard_id] = oplog
                     msg = "Starting connection thread"
-                    logging.info("MongoConnector: %s %s" % (msg, shard_conn))
+                    LOG.info("MongoConnector: %s %s" % (msg, shard_conn))
                     oplog.start()
 
         self.oplog_thread_join()
@@ -397,9 +324,70 @@ class Connector(threading.Thread):
     def oplog_thread_join(self):
         """Stops all the OplogThreads
         """
-        logging.info('MongoConnector: Stopping all OplogThreads')
+        LOG.info('MongoConnector: Stopping all OplogThreads')
         for thread in self.shard_set.values():
             thread.join()
+
+
+def create_doc_managers(names=None, urls=None, unique_key="_id",
+                        auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL,
+                        ns_set=None):
+    """Create a list of DocManager instances."""
+    # Get DocManagers and target URLs
+    # Each DocManager is assigned the respective (same-index) target URL
+    # Additional DocManagers may be specified that take no target URL
+    doc_manager_classes = []
+    if names is not None:
+        doc_manager_names = names.split(",")
+        for name in doc_manager_names:
+            try:
+                full_name = "mongo_connector.doc_managers.%s" % name
+                # importlib doesn't exist in 2.6, but __import__ is everywhere
+                module = __import__(full_name, fromlist=(name,))
+                dm_impl = module.DocManager
+                if not issubclass(dm_impl, DocManagerBase):
+                    raise TypeError("DocManager must inherit DocManagerBase.")
+                doc_manager_classes.append(module.DocManager)
+            except ImportError:
+                LOG.exception("Could not import %s." % full_name)
+                sys.exit(1)
+            except (AttributeError, TypeError):
+                LOG.exception("No definition for DocManager found in %s."
+                              % full_name)
+                sys.exit(1)
+    else:
+        LOG.info('No doc managers specified, using simulator.')
+
+    target_urls = urls.split(",") if urls else None
+
+    doc_managers = []
+    docman_kwargs = {"unique_key": unique_key,
+                     "namespace_set": ns_set,
+                     "auto_commit_interval": auto_commit_interval}
+    if names is not None:
+        for dm, url in zip_longest(doc_manager_classes, target_urls or []):
+            # If more target URLs were given than doc managers, may need to
+            # create additional doc managers
+            if not dm:
+                dm = doc_manager_classes[-1]
+            # target_urls may be shorter than self.doc_managers, or left as None
+            if url:
+                doc_managers.append(dm(url, **docman_kwargs))
+            else:
+                try:
+                    doc_managers.append(dm(**docman_kwargs))
+                except TypeError:
+                    LOG.exception("DocManager %s requires a target URL."
+                                  % dm.__module__)
+                    sys.exit(1)
+    elif target_urls is not None:
+        LOG.error("Cannot create a Connector with a "
+                  "target URL but no doc manager!")
+        sys.exit(1)
+    else:
+        LOG.info("No DocManagers were specified. Using simulator.")
+        doc_managers.append(simulator.DocManager(**docman_kwargs))
+    return doc_managers
 
 
 def main():
@@ -525,24 +513,22 @@ def main():
                       """The default username is '__system'""")
 
     #-d is to specify the doc manager file.
-    parser.add_option("-d", "--docManager", "--doc-managers", action="store",
+    parser.add_option("-d", "--doc-managers", action="store",
                       type="string", dest="doc_managers", default=None, help=
-                      """Used to specify the path to each doc manager """
-                      """file that will be used. DocManagers should be """
-                      """specified in the same order as their respective """
-                      """target addresses in the --target-urls option. """
-                      """URLs are assigned to doc managers """
-                      """respectively. Additional doc managers are """
-                      """implied to have no target URL. Additional URLs """
-                      """are implied to have the same doc manager type as """
-                      """the last doc manager for which a URL was """
-                      """specified. By default, Mongo Connector will use """
-                      """'doc_manager_simulator.py'.  It is recommended """
-                      """that all doc manager files be kept in the """
-                      """doc_managers folder in mongo-connector. For """
-                      """more information about making your own doc """
-                      """manager, see 'Writing Your Own DocManager' """
-                      """section of the wiki""")
+                      "Module names of the DocManagers to use. For example, "
+                      "'solr_doc_manager'. These modules must be in the "
+                      "mongo_connector.doc_managers namespace. "
+                      "Each module must contain exactly 1 definition of the "
+                      "DocManager class. If no DocManagers are given, the "
+                      "simulator will be used. "
+                      "Module names should be specified in the same order as "
+                      "their respective target addresses in the --target-urls "
+                      "option. Additional doc managers are implied to have no "
+                      "target URL. Additional URLs are implied to have the "
+                      "same doc manager type as the last doc manager for which "
+                      "a URL was specified. For information about making your "
+                      "own DocManager, see the 'Writing Your Own DocManager' "
+                      "section of the wiki.""")
 
     #-g is the destination namespace
     parser.add_option("-g", "--dest-namespace-set", action="store",
@@ -628,54 +614,53 @@ def main():
 
     (options, args) = parser.parse_args()
 
-    logger = logging.getLogger()
+    root_logger = logging.getLogger()
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s:%(lineno)d - %(message)s")
+
     loglevel = logging.INFO
     if options.verbose:
         loglevel = logging.DEBUG
-    logger.setLevel(loglevel)
+    root_logger.setLevel(loglevel)
 
     if options.enable_syslog and options.logfile:
-        print ("You cannot specify syslog and a logfile simultaneously, please"
-               " choose the logging method you would prefer.")
+        LOG.error("You cannot specify syslog and a logfile simultaneously, "
+                  "please choose the logging method you would prefer.")
         sys.exit(1)
 
     if options.enable_syslog:
         syslog_info = options.syslog_host.split(":")
-        syslog_host = logging.handlers.SysLogHandler(
+        log_out = logging.handlers.SysLogHandler(
             address=(syslog_info[0], int(syslog_info[1])),
             facility=options.syslog_facility
         )
-        syslog_host.setLevel(loglevel)
-        logger.addHandler(syslog_host)
+        log_out.setLevel(loglevel)
+        log_out.setFormatter(formatter)
+        root_logger.addHandler(log_out)
     elif options.logfile is not None:
         log_out = logging.FileHandler(options.logfile)
         log_out.setLevel(loglevel)
-        log_out.setFormatter(logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s'))
-        logger.addHandler(log_out)
+        log_out.setFormatter(formatter)
+        root_logger.addHandler(log_out)
     else:
         log_out = logging.StreamHandler()
         log_out.setLevel(loglevel)
-        log_out.setFormatter(logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s'))
-        logger.addHandler(log_out)
+        log_out.setFormatter(formatter)
+        root_logger.addHandler(log_out)
 
-    logger.info('Beginning Mongo Connector')
-
-    # Get DocManagers and target URLs
-    # Each DocManager is assigned the respective (same-index) target URL
-    # Additional DocManagers may be specified that take no target URL
-    doc_managers = options.doc_managers
-    doc_managers = doc_managers.split(",") if doc_managers else doc_managers
-    target_urls = options.urls.split(",") if options.urls else None
-
-    if options.doc_managers is None:
-        logger.info('No doc managers specified, using simulator.')
+    LOG.info('Beginning Mongo Connector')
 
     if options.ns_set is None:
         ns_set = []
     else:
         ns_set = options.ns_set.split(',')
+
+    # Instantiate DocManagers
+    doc_managers = create_doc_managers(options.doc_managers,
+                                       options.urls,
+                                       options.u_key,
+                                       options.commit_interval,
+                                       ns_set)
 
     if options.dest_ns_set is None:
         dest_ns_set = ns_set
@@ -683,12 +668,12 @@ def main():
         dest_ns_set = options.dest_ns_set.split(',')
 
     if len(dest_ns_set) != len(ns_set):
-        logger.error("Destination namespace must be the same length as the "
-                     "origin namespace!")
+        LOG.error("Destination namespace must be the same length as the "
+                  "origin namespace!")
         sys.exit(1)
     elif len(set(ns_set)) + len(set(dest_ns_set)) != 2 * len(ns_set):
-        logger.error("Namespace set and destination namespace set should not "
-                     "contain any duplicates!")
+        LOG.error("Namespace set and destination namespace set should not "
+                  "contain any duplicates!")
         sys.exit(1)
     else:
         ## Create a mapping of source ns to dest ns as a dict
@@ -709,14 +694,14 @@ def main():
             key = open(options.auth_file).read()
             re.sub(r'\s', '', key)
         except IOError:
-            logger.error('Could not parse password authentication file!')
+            LOG.exception('Could not parse password authentication file!')
             sys.exit(1)
 
     if options.password is not None:
         key = options.password
 
     if key is None and options.admin_name != "__system":
-        logger.error("Admin username specified without password!")
+        LOG.error("Admin username specified without password!")
         sys.exit(1)
 
     if options.commit_interval is not None and options.commit_interval < 0:
@@ -725,11 +710,9 @@ def main():
     connector = Connector(
         address=options.main_addr,
         oplog_checkpoint=options.oplog_config,
-        target_url=target_urls,
         ns_set=ns_set,
-        u_key=options.u_key,
         auth_key=key,
-        doc_manager=doc_managers,
+        doc_managers=doc_managers,
         auth_username=options.admin_name,
         collection_dump=(not options.no_dump),
         batch_size=options.batch_size,
@@ -747,7 +730,7 @@ def main():
             if not connector.is_alive():
                 break
         except KeyboardInterrupt:
-            logging.info("Caught keyboard interrupt, exiting!")
+            LOG.info("Caught keyboard interrupt, exiting!")
             connector.join()
             break
 
