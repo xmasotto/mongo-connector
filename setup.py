@@ -53,15 +53,23 @@ try:
 except IOError:
     pass        # Install without README.rst
 
-class InstallService(Command):
+
+class CustomCommand(Command):
     user_options = []
+
     def initialize_options(self):
         pass
+
     def finalize_options(self):
         pass
+
+
+class InstallService(CustomCommand):
+    description = "Installs Mongo Connector as a system daemon"
+
     def run(self):
         if os.geteuid() > 0:
-            print("Must be root user.")
+            print("Must be root user")
         else:
             mkpath("/var/log/mongo-connector")
             mkpath("/etc/init.d")
@@ -69,25 +77,23 @@ class InstallService(Command):
             copy_file("./scripts/mongo-connector",
                       "/etc/init.d/mongo-connector")
 
-def remove_file(path):
-    if os.path.exists(path):
-        os.remove(path)
-        print("removing '%s'" % path)
 
-class UninstallService(Command):
-    user_options = []
-    def initialize_options(self):
-        pass
-    def finalize_options(self):
-        pass
+class UninstallService(CustomCommand):
+    description = "Uninstalls Mongo Connector as a system daemon"
+
+    def remove_file(self, path):
+        if os.path.exists(path):
+            os.remove(path)
+            print("removing '%s'" % path)
+
     def run(self):
         if os.geteuid() > 0:
-            print("Must be root user.")
+            print("Must be root user")
         else:
             if os.path.exists("/var/log/mongo-connector"):
                 remove_tree("/var/log/mongo-connector")
-            remove_file("/etc/mongo-connector.json")
-            remove_file("/etc/init.d/mongo-connector")
+            self.remove_file("/etc/mongo-connector.json")
+            self.remove_file("/etc/init.d/mongo-connector")
 
 extra_opts['cmdclass'] = {
     "install_service": InstallService,
