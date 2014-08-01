@@ -20,9 +20,8 @@ into the backend.
 Please look at the Solr and ElasticSearch doc manager classes for a sample
 implementation with real systems.
 """
-
 from mongo_connector.errors import OperationFailed
-from mongo_connector.doc_managers import DocManagerBase
+from mongo_connector.doc_managers.doc_manager_base import DocManagerBase
 
 
 class DocManager(DocManagerBase):
@@ -69,6 +68,13 @@ class DocManager(DocManagerBase):
             raise Exception("upsert exception")
 
         self.doc_dict[doc["_id"]] = doc
+
+    def insert_file(self, f):
+        """Inserts a file to the doc dict.
+        """
+        doc = f.get_metadata()
+        doc['content'] = f.read()
+        self.doc_dict[f._id] = doc
 
     def remove(self, doc):
         """Removes the document from the doc dict.
