@@ -42,7 +42,6 @@ class MongoDocManagerTester(unittest.TestCase):
                                                         '--noprealloc'])
         cls.standalone_pair = '%s:%d' % (mongo_host, cls.standalone_port)
         cls.MongoDoc = DocManager(cls.standalone_pair)
-        cls.MongoDoc.command_helper = CommandHelper()
         cls.mongo_conn = MongoClient(cls.standalone_pair)
         cls.mongo = cls.mongo_conn['test']['test']
 
@@ -236,6 +235,8 @@ class MongoDocManagerTester(unittest.TestCase):
         self.assertEqual(last_doc["_id"], 98)
 
     def test_commands(self):
+        self.MongoDoc.command_helper = CommandHelper()
+
         # create test thing, assert
         self.MongoDoc.handle_command({
             'db': 'test',

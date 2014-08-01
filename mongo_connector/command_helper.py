@@ -27,13 +27,13 @@ class CommandHelper(object):
         self.dest_mapping = dest_mapping
 
         # Create a db to db mapping from the namespace mapping.
-        self.db_pairs = set((ns.split('.')[0],
-                             self.map_namespace(ns).split('.')[0])
-                            for ns in self.namespace_set)
+        db_pairs = set((ns.split('.')[0],
+                        self.map_namespace(ns).split('.')[0])
+                       for ns in self.namespace_set)
         targets = set()
-        for _, dest in self.db_pairs:
+        for _, dest in db_pairs:
             if dest in targets:
-                dbs = [src2 for src2, dest2 in self.db_pairs
+                dbs = [src2 for src2, dest2 in db_pairs
                        if dest == dest2]
                 raise errors.MongoConnectorError(
                     "Database mapping is not one-to-one."
@@ -44,13 +44,20 @@ class CommandHelper(object):
             else:
                 targets.add(dest)
 
+        self.db_mapping = {}
+        for src, dest in db_pairs:
+            arr = self.db_mapping.get(src, [])
+            arr.append(dest)
+            self.db_mapping[src] = arr
+
     # Applies the namespace mapping to a database.
     # Individual collections in a database can be mapped to
     # different target databases, so map_db can return multiple results.
     def map_db(self, db):
-        if not self.db_pairs:
+        if self.db_mapping:
+            return self.db_mapping.get(db, [])
+        else:
             return [db]
-        return [dest for src, dest in self.db_pairs if src == db]
 
     # Applies the namespace mapping to a "db.collection" string
     def map_namespace(self, ns):

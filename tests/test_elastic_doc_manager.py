@@ -24,6 +24,7 @@ from tests.test_elastic import ElasticsearchTestCase
 
 sys.path[0:0] = [""]
 
+from mongo_connector.command_helper import CommandHelper
 from mongo_connector.doc_managers.elastic_doc_manager import DocManager
 
 
@@ -189,27 +190,29 @@ class ElasticDocManagerTester(ElasticsearchTestCase):
             self.elastic_doc.elastic.count(index="test.test")['count'], 3)
 
     def test_commands(self):
+        self.elastic_doc.command_helper = CommandHelper()
+
         self.elastic_doc.handle_command({
             'db': 'test',
-            'create': 'test'
+            'create': 'test2'
         })
         time.sleep(1)
         self.assertIn('test.test', self.elastic_doc.get_indices())
 
         self.elastic_doc.handle_command({
             'db': 'test',
-            'drop': 'test'
+            'drop': 'test2'
         })
         time.sleep(1)
         self.assertNotIn('test', self.elastic_doc.get_indices())
 
         self.elastic_doc.handle_command({
             'db': 'test',
-            'create': 'test'
+            'create': 'test2'
         })
         self.elastic_doc.handle_command({
             'db': 'test',
-            'create': 'test2'
+            'create': 'test3'
         })
         time.sleep(1)
         self.elastic_doc.handle_command({
@@ -217,8 +220,8 @@ class ElasticDocManagerTester(ElasticsearchTestCase):
             'dropDatabase': 1
         })
         time.sleep(1)
-        self.assertNotIn('test.test', self.elastic_doc.get_indices())
         self.assertNotIn('test.test2', self.elastic_doc.get_indices())
+        self.assertNotIn('test.test3', self.elastic_doc.get_indices())
 
 
 if __name__ == '__main__':

@@ -35,7 +35,8 @@ from mongo_connector.doc_managers.formatters import DefaultDocumentFormatter
 
 wrap_exceptions = exception_wrapper({
     es_exceptions.ConnectionError: errors.ConnectionFailed,
-    es_exceptions.TransportError: errors.OperationFailed})
+    es_exceptions.TransportError: errors.OperationFailed,
+    es_exceptions.RequestError: errors.OperationFailed})
 
 LOG = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ class DocManager(DocManagerBase):
         return super(DocManager, self).apply_update(doc, update_spec)
 
     def get_indices(self):
-        return list(self.elastic.indices.stats()['indices'])
+        return list(self.elastic.indices.stats()['indices'].keys())
 
     @wrap_exceptions
     def handle_command(self, doc):
@@ -81,7 +82,7 @@ class DocManager(DocManagerBase):
             dbs = self.command_helper.map_db(doc['db'])
             for index in self.get_indices():
                 if index.split('.')[0] in dbs:
-                    self.elastic.indices.delete(index=index, ignore=400)
+                    self.elastic.indices.delete(index=index)
 
         if doc.get('renameCollection'):
             raise OperationFailed(
@@ -92,14 +93,14 @@ class DocManager(DocManagerBase):
                 doc['db'], doc['create'])
             if db:
                 self.elastic.indices.create(
-                    index=db + '.' + coll, ignore=400)
+                    index=db + '.' + coll)
 
         if doc.get('drop'):
             db, coll = self.command_helper.map_collection(
                 doc['db'], doc['drop'])
             if db:
                 self.elastic.indices.delete(
-                    db + '.' + coll, ignore=400)
+                    db + '.' + coll)
 
     @wrap_exceptions
     def update(self, doc, update_spec):

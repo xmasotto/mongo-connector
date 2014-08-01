@@ -148,8 +148,6 @@ class DocManager(DocManagerBase):
 
     @wrap_exceptions
     def handle_command(self, doc):
-        print("apply command")
-
         if doc.get('dropDatabase'):
             for db in self.command_helper.map_db(doc['db']):
                 self.solr.delete(q="ns:%s.*" % db,

@@ -36,7 +36,6 @@ class SolrDocManagerTester(unittest.TestCase):
         """
         cls.SolrDoc = DocManager("http://localhost:8983/solr/",
                                  auto_commit_interval=0)
-        cls.SolrDoc.command_helper = CommandHelper()
         cls.solr = Solr("http://localhost:8983/solr/")
 
     def setUp(self):
@@ -210,6 +209,8 @@ class SolrDocManagerTester(unittest.TestCase):
         self.assertTrue(doc['_id'] == '4' or doc['_id'] == '6')
 
     def test_commands(self):
+        self.SolrDoc.command_helper = CommandHelper()
+
         def count_ns(ns):
             return sum(1 for _ in self.SolrDoc._search("ns:%s" % ns))
 
