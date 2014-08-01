@@ -31,6 +31,7 @@ from tests.setup_cluster import (start_replica_set,
                                  kill_replica_set,
                                  restart_mongo_proc,
                                  kill_mongo_proc)
+from mongo_connector.doc_managers.elastic_doc_manager import DocManager
 from mongo_connector.connector import Connector
 from mongo_connector.util import retry_until_ok
 from pymongo.errors import OperationFailure, AutoReconnect
