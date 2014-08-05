@@ -87,19 +87,9 @@ class OplogThread(threading.Thread):
 
         #The set of gridfs namespaces to process from the mongo cluster
         self.gridfs_set = gridfs_set
-        self.gridfs_files_set = [ns + '.files' for ns in self.gridfs_set]
 
         #The dict of source namespaces to destination namespaces
         self.dest_mapping = dest_mapping
-
-        # Allow commands and gridfs files to be retrieved from the oplog
-        self.oplog_ns_set = []
-        if self.namespace_set:
-            self.oplog_ns_set.extend(self.namespace_set)
-            self.oplog_ns_set.extend(self.gridfs_files_set)
-            self.oplog_ns_set.extend(set(
-                ns.split('.', 1)[0] + '.$cmd' for ns in self.namespace_set))
-            self.oplog_ns_set.extend("admin.$cmd")
 
         #Whether the collection dump gracefully handles exceptions
         self.continue_on_error = continue_on_error
@@ -144,6 +134,48 @@ class OplogThread(threading.Thread):
             self._fields.add('_id')
         else:
             self._fields = None
+
+    @property
+    def namespace_set(self):
+        return self._namespace_set
+
+    @namespace_set.setter
+    def namespace_set(self, namespace_set):
+        self._namespace_set = namespace_set
+        self.update_oplog_ns_set()
+
+    @property
+    def gridfs_set(self):
+        return self._gridfs_set
+
+    @gridfs_set.setter
+    def gridfs_set(self, gridfs_set):
+        self._gridfs_set = gridfs_set
+        self._gridfs_files_set = [ns + '.files' for ns in gridfs_set]
+        self.update_oplog_ns_set()
+
+    @property
+    def gridfs_files_set(self):
+        try:
+            return self._gridfs_files_set
+        except AttributeError:
+            return []
+
+    @property
+    def oplog_ns_set(self):
+        try:
+            return self._oplog_ns_set
+        except AttributeError:
+            return []
+
+    def update_oplog_ns_set(self):
+        self._oplog_ns_set = []
+        if self.namespace_set:
+            self._oplog_ns_set.extend(self.namespace_set)
+            self._oplog_ns_set.extend(self.gridfs_files_set)
+            self._oplog_ns_set.extend(set(
+                ns.split('.', 1)[0] + '.$cmd' for ns in self.namespace_set))
+            self._oplog_ns_set.append("admin.$cmd")
 
     def run(self):
         """Start the oplog worker.
