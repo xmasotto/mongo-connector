@@ -19,15 +19,12 @@ import logging
 import logging.handlers
 import os
 import pymongo
-import pprint
 import re
 import shutil
 import sys
 import threading
 import time
-import imp
 from mongo_connector import config, constants, errors, util
-from mongo_connector.compat import zip_longest
 from mongo_connector.locking_dict import LockingDict
 from mongo_connector.oplog_manager import OplogThread
 from mongo_connector.doc_managers import doc_manager_simulator as simulator
@@ -77,7 +74,6 @@ class Connector(threading.Thread):
         else:
             LOG.info('No doc managers specified, using simulator.')
             self.doc_managers = (simulator.DocManager(),)
-        print(self.doc_managers)
 
         # Username for authentication
         self.auth_username = auth_username

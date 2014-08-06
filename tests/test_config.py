@@ -23,6 +23,7 @@ from mongo_connector import config, constants, errors
 from mongo_connector.connector import get_config_options
 from mongo_connector.doc_managers import doc_manager_simulator
 
+
 class TestConfig(unittest.TestCase):
     def setUp(self):
         self.reset_config()
@@ -76,7 +77,7 @@ class TestConfig(unittest.TestCase):
         }
         self.load_json(test_config, validate=False)
 
-        for test_key in test_config.keys():
+        for test_key in test_config:
             self.assertEqual(self.conf[test_key], test_config[test_key])
 
         # Test for partial dict updates
@@ -261,3 +262,7 @@ class TestConfig(unittest.TestCase):
         }
         self.assertRaises(errors.InvalidConfiguration,
                           self.load_json, test_config)
+
+
+if __name__ == '__main__':
+    unittest.main()

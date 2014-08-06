@@ -13,14 +13,14 @@
         "__type": "file",
         "__filename": "mongo-connector.log",
 
-        "type": "syslog",
-        "host": "localhost:512"
+        "__type": "syslog",
+        "__host": "localhost:512"
     },
 
     "authentication": {
         "__adminUsername": "username",
         "__password": "password",
-        "__passwordFile": null
+        "__passwordFile": "mongo-connector.pwd"
     },
 
     "__fields": ["field1", "field2", "field3"],
