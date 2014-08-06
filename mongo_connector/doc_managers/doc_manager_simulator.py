@@ -91,8 +91,8 @@ class DocManager(DocManagerBase):
             raise OperationFailed("Document does not exist: %s" % str(doc))
 
     def search(self, start_ts, end_ts):
-        """Searches through all documents and finds all documents within the
-        range.
+        """Searches through all documents and finds all documents that were
+        modified or deleted within the range.
 
         Since we have very few documents in the doc dict when this is called,
         linear search is fine. This method is only used by rollbacks to query
@@ -115,9 +115,8 @@ class DocManager(DocManagerBase):
         pass
 
     def get_last_doc(self):
-        """Searches through the doc dict to find the document with the latest
-            timestamp.
-        """
+        """Searches through the doc dict to find the document that was
+        modified or deleted most recently."""
 
         last_doc = None
         last_ts = None
