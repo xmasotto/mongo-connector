@@ -54,7 +54,7 @@ class Connector(threading.Thread):
         # The name of the file that stores the progress of the OplogThreads
         self.oplog_checkpoint = oplog_checkpoint
 
-        # main address - either a primary or mongos for sharded setups
+        # main address - either mongos for sharded setups or a primary otherwise
         self.address = address
 
         # The set of relevant namespaces to consider
@@ -78,7 +78,6 @@ class Connector(threading.Thread):
         else:
             LOG.info('No doc managers specified, using simulator.')
             self.doc_managers = (simulator.DocManager(),)
-        print(self.doc_managers)
 
         # Username for authentication
         self.auth_username = auth_username
@@ -334,7 +333,6 @@ class Connector(threading.Thread):
         LOG.info('MongoConnector: Stopping all OplogThreads')
         for thread in self.shard_set.values():
             thread.join()
-
 
 def get_config_options():
     result = []
