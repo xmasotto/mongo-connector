@@ -796,8 +796,6 @@ def main():
     conf = config.Config(get_config_options())
     conf.parse_args()
 
-    print(conf['docManagers'])
-
     root_logger = logging.getLogger()
     formatter = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s:%(lineno)d - %(message)s")
