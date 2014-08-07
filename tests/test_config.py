@@ -50,6 +50,10 @@ class TestConfig(unittest.TestCase):
             argv.append(str(v))
         self.conf.parse_args(argv)
 
+    def test_default(self):
+        # Make sure default configuration doesn't raise any exceptions
+        self.load_options()
+
     def test_parse_json(self):
         # Test for basic json parsing correctness
         test_config = {
