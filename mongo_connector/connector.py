@@ -43,7 +43,6 @@ class Connector(threading.Thread):
                  auth_key, doc_managers=None, auth_username=None,
                  collection_dump=True, batch_size=constants.DEFAULT_BATCH_SIZE,
                  fields=None, dest_mapping={},
-                 auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL,
                  continue_on_error=False, gridfs_set=[]):
 
         super(Connector, self).__init__()
@@ -563,28 +562,40 @@ def get_config_options():
 
     def apply_namespaces(option, cli_values):
         if cli_values['ns_set']:
-            ns_set = cli_values['ns_set'].split(',')
-            if len(ns_set) != len(set(ns_set)):
-                raise errors.InvalidConfiguration(
-                    "Namespace set should not contain any duplicates.")
-            option.value['include'] = ns_set
+            option.value['include'] = cli_values['ns_set'].split(',')
+
+        if cli_values['gridfs_set']:
+            option.value['gridfs'] = cli_values['gridfs_set'].split(',')
 
         if cli_values['dest_ns_set']:
             ns_set = option.value['include']
             dest_ns_set = cli_values['dest_ns_set'].split(',')
-            if len(dest_ns_set) != len(set(dest_ns_set)):
-                raise errors.InvalidConfiguration(
-                    "Destination namespace set should not"
-                    " contain any duplicates.")
             if len(ns_set) != len(dest_ns_set):
                 raise errors.InvalidConfiguration(
                     "Destination namespace set should be the"
                     " same length as the origin namespace set.")
             option.value['mapping'] = dict(zip(ns_set, dest_ns_set))
 
+        ns_set = option.value['include']
+        if len(ns_set) != len(set(ns_set)):
+            raise errors.InvalidConfiguration(
+                "Namespace set should not contain any duplicates.")
+
+        dest_mapping = option.value['mapping']
+        if len(dest_mapping) != len(set(dest_mapping.values())):
+            raise errors.InvalidConfiguration(
+                "Destination namespaces set should not"
+                " contain any duplicates.")
+
+        gridfs_set = option.value['gridfs']
+        if len(gridfs_set) != len(set(gridfs_set)):
+            raise errors.InvalidConfiguration(
+                "GridFS set should not contain any duplicates.")
+
     default_namespaces = {
         "include": [],
-        "mapping": {}
+        "mapping": {},
+        "gridfs": []
     }
 
     namespaces = add_option(
@@ -616,6 +627,14 @@ def get_config_options():
         "equal length. The default is to use the identity "
         "mapping. This is currently only implemented "
         "for mongo-to-mongo connections.")
+
+    # --gridfs-set is the set of GridFS namespaces to consider
+    namespaces.add_cli(
+        "--gridfs-set", dest="gridfs_set", help=
+        "Used to specify the GridFS namespaces we want to "
+        "consider. For example, if your metadata is stored in "
+        "test.fs.files and chunks are stored in test.fs.chunks, "
+        "you can use `--gridfs-set test.fs`.")
 
     def apply_doc_managers(option, cli_values):
         if cli_values['doc_manager'] is None:
@@ -854,6 +873,7 @@ def main():
         ns_set=conf['namespaces.include'],
         dest_mapping=conf['namespaces.mapping'],
         doc_managers=conf['docManagers'],
+        gridfs_set=conf['namespaces.gridfs']
     )
     connector.start()
 

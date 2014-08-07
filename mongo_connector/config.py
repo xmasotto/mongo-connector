@@ -28,7 +28,7 @@ def default_apply_function(option, cli_values):
 
 
 class Option(object):
-    """A config file option which can be overwritten by the command line.
+    """A config file option which can be overwritten on the command line.
 
     config_key is the corresponding field in the JSON config file.
 

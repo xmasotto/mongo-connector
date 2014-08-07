@@ -32,23 +32,23 @@ class TestConfig(unittest.TestCase):
         self.options = get_config_options()
         self.conf = config.Config(self.options)
 
-    def load_json(self, d, validate=True):
+    def load_json(self, d, validate=True, reset_config=True):
+        if reset_config:
+            self.reset_config()
         # Serialize a python dictionary to json, then load it
         text = json.dumps(d)
         self.conf.load_json(text)
         if validate:
-            self.load_options()
+            self.load_options(reset_config=False)
 
-    def load_options(self, d={}):
+    def load_options(self, d={}, reset_config=True):
+        if reset_config:
+            self.reset_config()
         argv = []
         for k, v in d.items():
             argv.append(str(k))
             argv.append(str(v))
         self.conf.parse_args(argv)
-
-    def test_default(self):
-        # Make sure default configuration is valid
-        self.load_options()
 
     def test_parse_json(self):
         # Test for basic json parsing correctness
@@ -72,7 +72,8 @@ class TestConfig(unittest.TestCase):
             'fields': ['testFields1', 'testField2'],
             'namespaces': {
                 'include': ['testNamespaceSet'],
-                'mapping': {'testMapKey': 'testMapValue'}
+                'mapping': {'testMapKey': 'testMapValue'},
+                'gridfs': ['testGridfsSet']
             }
         }
         self.load_json(test_config, validate=False)
@@ -94,7 +95,7 @@ class TestConfig(unittest.TestCase):
                 'mapping': {}
             }
         }
-        self.load_json(test_config, validate=False)
+        self.load_json(test_config, validate=False, reset_config=False)
         self.assertEqual(self.conf['logging'], {
             'type': 'syslog',
             'filename': 'testFilename',
@@ -108,7 +109,8 @@ class TestConfig(unittest.TestCase):
         })
         self.assertEqual(self.conf['namespaces'], {
             'include': ['testNamespaceSet'],
-            'mapping': {}
+            'mapping': {},
+            'gridfs': ['testGridfsSet']
         })
 
     def test_basic_options(self):
@@ -116,7 +118,6 @@ class TestConfig(unittest.TestCase):
         def test_option(arg_name, json_key, value):
             self.load_options({arg_name: value})
             self.assertEqual(self.conf[json_key], value)
-            self.reset_config()
 
         test_option('-m', 'mainAddress', 'testMainAddress')
         test_option('-o', 'oplogFile', 'testOplogFileShort')
@@ -127,7 +128,6 @@ class TestConfig(unittest.TestCase):
         self.load_options({'-w': 'logFile'})
         self.assertEqual(self.conf['logging.type'], 'file')
         self.assertEqual(self.conf['logging.filename'], 'logFile')
-        self.reset_config()
 
         self.load_options({'-s': 'true',
                            '--syslog-host': 'testHost',
@@ -135,7 +135,6 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(self.conf['logging.type'], 'syslog')
         self.assertEqual(self.conf['logging.host'], 'testHost')
         self.assertEqual(self.conf['logging.facility'], 'testFacility')
-        self.reset_config()
 
         self.load_options({'-i': 'a,b,c'})
         self.assertEqual(self.conf['fields'], ['a', 'b', 'c'])
@@ -160,6 +159,20 @@ class TestConfig(unittest.TestCase):
             "-g": "1,2,3"
         }
         self.assertRaises(errors.InvalidConfiguration, self.load_options, args)
+        d = {
+            'namespaces': {'include': ['a', 'a', 'b']}
+        }
+        self.assertRaises(errors.InvalidConfiguration, self.load_json, d)
+
+        # duplicate gridfs_set
+        args = {
+            '--gridfs-set': 'a,a,b'
+        }
+        self.assertRaises(errors.InvalidConfiguration, self.load_options, args)
+        d = {
+            'namespaces': {'gridfs': ['a', 'a', 'b']}
+        }
+        self.assertRaises(errors.InvalidConfiguration, self.load_json, d)
 
         # duplicate dest_ns_set
         args = {
@@ -167,6 +180,13 @@ class TestConfig(unittest.TestCase):
             "--dest-namespace-set": "1,3,3"
         }
         self.assertRaises(errors.InvalidConfiguration, self.load_options, args)
+        d = {
+            'namespaces': {'mapping': {
+                'a': 'c',
+                'b': 'c'
+            }}
+        }
+        self.assertRaises(errors.InvalidConfiguration, self.load_json, d)
 
         # len(ns_set) < len(dest_ns_set)
         args = {
@@ -198,7 +218,6 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(dm.url, "test_target_url")
         self.assertEqual(dm.unique_key, "id")
         self.assertEqual(dm.auto_commit_interval, 10)
-        self.reset_config()
 
         # no doc_manager but target_url
         args = {
@@ -206,7 +225,6 @@ class TestConfig(unittest.TestCase):
         }
         self.assertRaises(errors.InvalidConfiguration,
                           self.load_options, args)
-        self.reset_config()
 
     def test_config_validation(self):
         # can't log both to syslog and to logfile
@@ -221,7 +239,6 @@ class TestConfig(unittest.TestCase):
                               '-a': 'username'
                           })
 
-        self.reset_config()
 
         # can't specify password and password file
         self.assertRaises(errors.InvalidConfiguration,
@@ -230,8 +247,6 @@ class TestConfig(unittest.TestCase):
                               '-p': 'password',
                               '-f': 'password_file'
                           })
-
-        self.reset_config()
 
         # docManagers must be a list
         test_config = {
