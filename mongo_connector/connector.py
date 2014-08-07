@@ -19,19 +19,17 @@ import logging
 import logging.handlers
 import os
 import pymongo
-import pprint
 import re
 import shutil
 import sys
 import threading
 import time
-import imp
 from mongo_connector import config, constants, errors, util
-from mongo_connector.compat import zip_longest
 from mongo_connector.locking_dict import LockingDict
 from mongo_connector.oplog_manager import OplogThread
 from mongo_connector.doc_managers import doc_manager_simulator as simulator
 from mongo_connector.doc_managers.doc_manager_base import DocManagerBase
+from mongo_connector.command_helper import CommandHelper
 from mongo_connector.util import log_fatal_exceptions
 
 from pymongo import MongoClient
@@ -46,8 +44,7 @@ class Connector(threading.Thread):
                  auth_key, doc_managers=None, auth_username=None,
                  collection_dump=True, batch_size=constants.DEFAULT_BATCH_SIZE,
                  fields=None, dest_mapping={},
-                 auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL,
-                 continue_on_error=False):
+                 continue_on_error=False, gridfs_set=[]):
 
         super(Connector, self).__init__()
 
@@ -57,11 +54,14 @@ class Connector(threading.Thread):
         # The name of the file that stores the progress of the OplogThreads
         self.oplog_checkpoint = oplog_checkpoint
 
-        # main address - either mongos for sharded setups or a primary otherwise
+        # main address - either a primary or mongos for sharded setups
         self.address = address
 
         # The set of relevant namespaces to consider
         self.ns_set = ns_set
+
+        # The set of gridfs namespaces to consider
+        self.gridfs_set = gridfs_set
 
         # The dict of source namespace to destination namespace
         self.dest_mapping = dest_mapping
@@ -98,6 +98,11 @@ class Connector(threading.Thread):
 
         # List of fields to export
         self.fields = fields
+
+        # Initialize and set the command helper
+        command_helper = CommandHelper(self.ns_set, self.dest_mapping)
+        for dm in self.doc_managers:
+            dm.command_helper = command_helper
 
         if self.oplog_checkpoint is not None:
             if not os.path.exists(self.oplog_checkpoint):
@@ -193,7 +198,7 @@ class Connector(threading.Thread):
             oplog_str = data[count]
             time_stamp = data[count + 1]
             oplog_dict[oplog_str] = util.long_to_bson_ts(time_stamp)
-            #stored as bson_ts
+            # stored as bson_ts
 
     @log_fatal_exceptions
     def run(self):
@@ -213,7 +218,7 @@ class Connector(threading.Thread):
         if conn_type == "REPLSET":
             # Make sure we are connected to a replica set
             is_master = main_conn.admin.command("isMaster")
-            if not "setName" in is_master:
+            if "setName" not in is_master:
                 LOG.error(
                     'No replica set at "%s"! A replica set is required '
                     'to run mongo-connector. Shutting down...' % self.address
@@ -227,7 +232,7 @@ class Connector(threading.Thread):
             if self.auth_key is not None:
                 main_conn.admin.authenticate(self.auth_username, self.auth_key)
 
-            #non sharded configuration
+            # non sharded configuration
             oplog_coll = main_conn['local']['oplog.rs']
 
             oplog = OplogThread(
@@ -245,7 +250,8 @@ class Connector(threading.Thread):
                 batch_size=self.batch_size,
                 fields=self.fields,
                 dest_mapping=self.dest_mapping,
-                continue_on_error=self.continue_on_error
+                continue_on_error=self.continue_on_error,
+                gridfs_set=self.gridfs_set
             )
             self.shard_set[0] = oplog
             LOG.info('MongoConnector: Starting connection thread %s' %
@@ -311,7 +317,8 @@ class Connector(threading.Thread):
                         batch_size=self.batch_size,
                         fields=self.fields,
                         dest_mapping=self.dest_mapping,
-                        continue_on_error=self.continue_on_error
+                        continue_on_error=self.continue_on_error,
+                        gridfs_set=self.gridfs_set
                     )
                     self.shard_set[shard_id] = oplog
                     msg = "Starting connection thread"
@@ -327,6 +334,7 @@ class Connector(threading.Thread):
         LOG.info('MongoConnector: Stopping all OplogThreads')
         for thread in self.shard_set.values():
             thread.join()
+
 
 def get_config_options():
     result = []
@@ -409,7 +417,8 @@ def get_config_options():
         if cli_values['verbose']:
             option.value = 1
         if option.value < 0:
-            raise errors.InvalidConfiguration("verbosity must be non-negative.")
+            raise errors.InvalidConfiguration(
+                "verbosity must be non-negative.")
 
     verbosity = add_option(
         config_key="verbosity",
@@ -558,28 +567,40 @@ def get_config_options():
 
     def apply_namespaces(option, cli_values):
         if cli_values['ns_set']:
-            ns_set = cli_values['ns_set'].split(',')
-            if len(ns_set) != len(set(ns_set)):
-                raise errors.InvalidConfiguration(
-                    "Namespace set should not contain any duplicates.")
-            option.value['include'] = ns_set
+            option.value['include'] = cli_values['ns_set'].split(',')
+
+        if cli_values['gridfs_set']:
+            option.value['gridfs'] = cli_values['gridfs_set'].split(',')
 
         if cli_values['dest_ns_set']:
             ns_set = option.value['include']
             dest_ns_set = cli_values['dest_ns_set'].split(',')
-            if len(dest_ns_set) != len(set(dest_ns_set)):
-                raise errors.InvalidConfiguration(
-                    "Destination namespace set should not"
-                    " contain any duplicates.")
             if len(ns_set) != len(dest_ns_set):
                 raise errors.InvalidConfiguration(
                     "Destination namespace set should be the"
                     " same length as the origin namespace set.")
             option.value['mapping'] = dict(zip(ns_set, dest_ns_set))
 
+        ns_set = option.value['include']
+        if len(ns_set) != len(set(ns_set)):
+            raise errors.InvalidConfiguration(
+                "Namespace set should not contain any duplicates.")
+
+        dest_mapping = option.value['mapping']
+        if len(dest_mapping) != len(set(dest_mapping.values())):
+            raise errors.InvalidConfiguration(
+                "Destination namespaces set should not"
+                " contain any duplicates.")
+
+        gridfs_set = option.value['gridfs']
+        if len(gridfs_set) != len(set(gridfs_set)):
+            raise errors.InvalidConfiguration(
+                "GridFS set should not contain any duplicates.")
+
     default_namespaces = {
         "include": [],
-        "mapping": {}
+        "mapping": {},
+        "gridfs": []
     }
 
     namespaces = add_option(
@@ -611,6 +632,14 @@ def get_config_options():
         "equal length. The default is to use the identity "
         "mapping. This is currently only implemented "
         "for mongo-to-mongo connections.")
+
+    # --gridfs-set is the set of GridFS namespaces to consider
+    namespaces.add_cli(
+        "--gridfs-set", dest="gridfs_set", help=
+        "Used to specify the GridFS namespaces we want to "
+        "consider. For example, if your metadata is stored in "
+        "test.fs.files and chunks are stored in test.fs.chunks, "
+        "you can use `--gridfs-set test.fs`.")
 
     def apply_doc_managers(option, cli_values):
         if cli_values['doc_manager'] is None:
@@ -784,14 +813,13 @@ def get_config_options():
 
     return result
 
+
 @log_fatal_exceptions
 def main():
     """ Starts the mongo connector (assuming CLI)
     """
     conf = config.Config(get_config_options())
     conf.parse_args()
-
-    print(conf['docManagers'])
 
     root_logger = logging.getLogger()
     formatter = logging.Formatter(
@@ -851,6 +879,7 @@ def main():
         ns_set=conf['namespaces.include'],
         dest_mapping=conf['namespaces.mapping'],
         doc_managers=conf['docManagers'],
+        gridfs_set=conf['namespaces.gridfs']
     )
     connector.start()
 

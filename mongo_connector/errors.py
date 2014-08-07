@@ -29,6 +29,7 @@ class OperationFailed(MongoConnectorError):
     """Raised for failed commands on the destination database
     """
 
+
 class InvalidConfiguration(MongoConnectorError):
     """Raised when the user specifies an invalid configuration
     """

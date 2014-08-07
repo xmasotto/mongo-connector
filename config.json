@@ -7,7 +7,7 @@
     "noDump": false,
     "batchSize": -1,
     "verbosity": 0,
-    "continueOnError": true,
+    "continueOnError": false,
 
     "logging": {
         "type": "file",
@@ -20,7 +20,7 @@
     "authentication": {
         "__adminUsername": "username",
         "__password": "password",
-        "__passwordFile": null
+        "__passwordFile": "mongo-connector.pwd"
     },
 
     "__fields": ["field1", "field2", "field3"],
@@ -31,6 +31,7 @@
             "db.source1": "db.dest1",
             "db.source2": "db.dest2"
         }
+	"__gridfs": ["db.fs"]
     },
 
     "docManagers": [

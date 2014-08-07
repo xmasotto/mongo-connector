@@ -28,6 +28,20 @@ def default_apply_function(option, cli_values):
 
 
 class Option(object):
+    """A config file option which can be overwritten on the command line.
+
+    config_key is the corresponding field in the JSON config file.
+
+    apply_function has the following signature:
+    def apply_function(option, cli_values):
+        # modify option.value ...
+
+    When apply_function is invoked, option.value will be set to the
+    value given in the config file (or the default value).
+
+    apply_function reads the cli_values and modifies option.value accordingly
+    """
+
     def __init__(self, config_key=None, default=None, type=None,
                  apply_function=default_apply_function):
         self.config_key = config_key
@@ -46,10 +60,23 @@ class Option(object):
                               self.type)
 
     def add_cli(self, *args, **kwargs):
+        """Add a command line argument.
+
+        All of the given arguments will be passed directly to
+        optparse.OptionParser().add_option
+        """
         self.cli_options.append((args, kwargs))
 
 
 class Config(object):
+    """Manages command line application configuration.
+
+    conf = Config(options)
+    conf.parse_args()
+    value = conf['key']
+    value2 = conf['key1.key2'] # same as conf['key1']['key2']
+    """
+
     def __init__(self, options):
         self.options = options
 
@@ -57,6 +84,14 @@ class Config(object):
             [(option.config_key, option) for option in self.options])
 
     def parse_args(self, argv=None):
+        """Parses command line arguments from stdin (or given argv).
+
+        Does the following:
+        1. Parses command line arguments
+        2. Loads config file into options (if config file specified)
+        3. calls option.apply_function with the parsed cli_values
+        """
+
         # parse the command line options
         parser = optparse.OptionParser()
         for option in self.options:
@@ -105,10 +140,10 @@ class Config(object):
                 # type check
                 if not option.validate_type():
                     raise errors.InvalidConfiguration(
-                        "%s should have %r, %r was given!" %
+                        "%s should be a %r, %r was given!" %
                         (option.config_key,
-                         option.type,
-                         type(option.value)))
+                         option.type.__name__,
+                         type(option.value).__name__))
             else:
                 if not k.startswith("__"):
                     logging.warning("Unrecognized option: %s" % k)
