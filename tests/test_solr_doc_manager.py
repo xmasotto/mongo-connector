@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import datetime
 import time
 import sys
 if sys.version_info[:2] == (2, 6):
@@ -21,8 +22,10 @@ else:
 
 sys.path[0:0] = [""]
 
+from mongo_connector.command_helper import CommandHelper
 from mongo_connector.doc_managers.solr_doc_manager import DocManager
 from pysolr import Solr
+from tests.test_gridfs_file import MockGridFSFile
 
 
 class SolrDocManagerTester(unittest.TestCase):
@@ -129,6 +132,47 @@ class SolrDocManagerTester(unittest.TestCase):
         res = self.solr.search('*:*')
         self.assertTrue(len(res) == 0)
 
+    def test_insert_file(self):
+        """Ensure we can properly insert a file into Solr via DocManager.
+        """
+        test_data = ' '.join(str(x) for x in range(100000))
+        docc = {
+            '_id': 'test_id',
+            '_ts': 10,
+            'ns': 'test.ns',
+            'filename': 'test_filename',
+            'upload_date': datetime.datetime.now(),
+            'md5': 'test_md5'
+        }
+        self.SolrDoc.insert_file(MockGridFSFile(docc, test_data))
+        res = self.solr.search('*:*')
+        for doc in res:
+            self.assertEqual(doc['_id'], docc['_id'])
+            self.assertEqual(doc['_ts'], docc['_ts'])
+            self.assertEqual(doc['ns'], docc['ns'])
+            self.assertEqual(doc['filename'], docc['filename'])
+            self.assertEqual(doc['content'][0].strip(),
+                             test_data.strip())
+
+    def test_remove_file(self):
+        test_data = 'hello world'
+        docc = {
+            '_id': 'test_id',
+            '_ts': 10,
+            'ns': 'test.ns',
+            'filename': 'test_filename',
+            'upload_date': datetime.datetime.now(),
+            'md5': 'test_md5'
+        }
+
+        self.SolrDoc.insert_file(MockGridFSFile(docc, test_data))
+        res = self.solr.search('*:*')
+        self.assertEqual(len(res), 1)
+
+        self.SolrDoc.remove(docc)
+        res = self.solr.search('*:*')
+        self.assertEqual(len(res), 0)
+
     def test_full_search(self):
         """Query Solr for all docs via API and via DocManager's _search()
         """
@@ -206,6 +250,48 @@ class SolrDocManagerTester(unittest.TestCase):
         docc = {'_id': '6', 'name': 'HareTwin', 'ts': '2'}
         doc = self.SolrDoc.get_last_doc()
         self.assertTrue(doc['_id'] == '4' or doc['_id'] == '6')
+
+    def test_commands(self):
+        self.SolrDoc.command_helper = CommandHelper()
+
+        def count_ns(ns):
+            return sum(1 for _ in self.SolrDoc._search("ns:%s" % ns))
+
+        self.SolrDoc.upsert({
+            '_id': '1',
+            'test': 'data',
+            'ns': 'test.test',
+            'ts': '1'
+        })
+        self.assertEqual(count_ns("test.test"), 1)
+
+        self.SolrDoc.handle_command({
+            'db': 'test',
+            'drop': 'test'
+        })
+        time.sleep(1)
+        self.assertEqual(count_ns("test.test"), 0)
+
+        self.SolrDoc.upsert({
+            '_id': '2',
+            'test': 'data',
+            'ns': 'test.test2',
+            'ts': '2'
+        })
+        self.SolrDoc.upsert({
+            '_id': '3',
+            'test': 'data',
+            'ns': 'test.test3',
+            'ts': '3'
+        })
+        self.SolrDoc.handle_command({
+            'db': 'test',
+            'dropDatabase': 1
+        })
+        time.sleep(1)
+        self.assertEqual(count_ns("test.test2"), 0)
+        self.assertEqual(count_ns("test.test3"), 0)
+
 
 if __name__ == '__main__':
     unittest.main()

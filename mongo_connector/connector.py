@@ -29,6 +29,7 @@ from mongo_connector.locking_dict import LockingDict
 from mongo_connector.oplog_manager import OplogThread
 from mongo_connector.doc_managers import doc_manager_simulator as simulator
 from mongo_connector.doc_managers.doc_manager_base import DocManagerBase
+from mongo_connector.command_helper import CommandHelper
 
 from pymongo import MongoClient
 
@@ -43,7 +44,7 @@ class Connector(threading.Thread):
                  collection_dump=True, batch_size=constants.DEFAULT_BATCH_SIZE,
                  fields=None, dest_mapping={},
                  auto_commit_interval=constants.DEFAULT_COMMIT_INTERVAL,
-                 continue_on_error=False):
+                 continue_on_error=False, gridfs_set=[]):
 
         super(Connector, self).__init__()
 
@@ -59,7 +60,10 @@ class Connector(threading.Thread):
         # The set of relevant namespaces to consider
         self.ns_set = ns_set
 
-        # The dict of source namespace to destination namespace
+        #The set of gridfs namespaces to consider
+        self.gridfs_set = gridfs_set
+
+        #The dict of source namespace to destination namespace
         self.dest_mapping = dest_mapping
 
         # Whether the collection dump gracefully handles exceptions
@@ -93,6 +97,11 @@ class Connector(threading.Thread):
 
         # List of fields to export
         self.fields = fields
+
+        # Initialize and set the command helper
+        command_helper = CommandHelper(self.ns_set, self.dest_mapping)
+        for dm in self.doc_managers:
+            dm.command_helper = command_helper
 
         if self.oplog_checkpoint is not None:
             if not os.path.exists(self.oplog_checkpoint):
@@ -239,7 +248,8 @@ class Connector(threading.Thread):
                 batch_size=self.batch_size,
                 fields=self.fields,
                 dest_mapping=self.dest_mapping,
-                continue_on_error=self.continue_on_error
+                continue_on_error=self.continue_on_error,
+                gridfs_set=self.gridfs_set
             )
             self.shard_set[0] = oplog
             LOG.info('MongoConnector: Starting connection thread %s' %
@@ -305,7 +315,8 @@ class Connector(threading.Thread):
                         batch_size=self.batch_size,
                         fields=self.fields,
                         dest_mapping=self.dest_mapping,
-                        continue_on_error=self.continue_on_error
+                        continue_on_error=self.continue_on_error,
+                        gridfs_set=self.gridfs_set
                     )
                     self.shard_set[shard_id] = oplog
                     msg = "Starting connection thread"
