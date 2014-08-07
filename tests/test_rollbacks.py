@@ -92,8 +92,7 @@ class TestRollbacks(unittest.TestCase):
         kill_mongo_proc(self.primary_p, destroy=False)
 
         # Wait for the secondary to be promoted
-        while not secondary["admin"].command("isMaster")["ismaster"]:
-            time.sleep(1)
+        assert_soon(lambda: secondary["admin"].command("isMaster")["ismaster"])
 
         # Insert another document. This will be rolled back later
         retry_until_ok(self.main_conn["test"]["mc"].insert, {"i": 1})
@@ -236,8 +235,8 @@ class TestRollbacks(unittest.TestCase):
 
         # Kill the primary, wait for secondary to be promoted
         kill_mongo_proc(self.primary_p, destroy=False)
-        while not self.secondary_conn["admin"].command("isMaster")["ismaster"]:
-            time.sleep(1)
+        assert_soon(lambda: self.secondary_conn["admin"]
+                    .command("isMaster")["ismaster"])
 
         # Delete first document
         retry_until_ok(self.main_conn["test"]["mc"].remove, {"i": 0})

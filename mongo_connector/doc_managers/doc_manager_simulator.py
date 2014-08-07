@@ -117,19 +117,9 @@ class DocManager(DocManagerBase):
     def get_last_doc(self):
         """Searches through the doc dict to find the document that was
         modified or deleted most recently."""
-
-        last_doc = None
-        last_ts = None
-
         docs = itertools.chain(self.doc_dict.values(),
                                self.removed_dict.values())
-        for doc in docs:
-            ts = doc['_ts']
-            if last_ts is None or ts >= last_ts:
-                last_doc = doc
-                last_ts = ts
-
-        return last_doc
+        return max(docs, key=lambda x: x["_ts"])
 
     def _search(self):
         """Returns all documents in the doc dict.
